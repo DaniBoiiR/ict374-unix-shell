@@ -56,7 +56,16 @@ int main(int argc, char *argv[]){
     }
 
     inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
-    saveHistory(inputLine, historyfile); // Saves command 
+    
+    // Skip empty input lines
+    if(strlen(inputLine) == 0){
+    continue;
+}
+    
+    if(strcmp(inputLine, "!!") != 0 && strlen(inputLine) > 0){
+      saveHistory(inputLine, historyfile);
+    }
+
     int tokenSize = tokenize(inputLine, token);
     int expandedTokensSize = expandWildCard(token, expandedTokens, expandedStorage, tokenSize);
     
@@ -88,9 +97,17 @@ int main(int argc, char *argv[]){
       printf("Separator: %s\n", command[n].sep);
 
       // Execute Built in shell commands. 
-      if(executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory)){
+      int result = executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory);
+
+      if(result == 1){
         continue; 
       }
+
+      // IF !! is entered. break loop 
+      if(result == 2){
+        break;
+      }
+
       // Execute Unix Shell Commands 
       else{
         executeCommand(&command[n]);
@@ -115,10 +132,9 @@ void saveHistory(char *inputLine, FILE *historyfile){
 
 // Executes Built in Commands 
 int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory){
-  char *cmd = command->argv[0]; 
-
   // Null protection 
   if(command->argv == NULL || command->argv[0] == NULL) return 0;
+  char *cmd = command->argv[0]; 
 
   // Exits the program after exit is input. 
   if (strcmp(cmd, "exit") == 0) {
@@ -159,8 +175,8 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   } 
 
   if (strcmp(cmd, "!!") == 0) {
-    reenact_history(-1, inputLine, reenactingHistory);
-    return 1;
+    reenact_history(-1, inputLine, &reenactingHistory);
+    return 2;
   }
 
   return 0; // If command is not a Built in shell comamnd 
@@ -172,6 +188,7 @@ void executeCommand(Command *command){
 
   if(pid < 0){ // Fork failure 
     perror("fork");
+    return;
   }
 
   if(pid == 0){ // In Child 
@@ -183,15 +200,11 @@ void executeCommand(Command *command){
   // In Parent
   // Parent Handling Background processes and & operator
   else{
-    if(strcmp(command->sep, "&") == 0){
-      return; // Returns back to main loop to execute next command concurrently 
-    }
-
-    // Sequential Handling. Shell has to wait until child process is complete
-    // After child is complete, shell returns to main loop 
-    else{
+    if(strcmp(command->sep, "&") != 0){
+      // Sequential Handling. Shell has to wait until child process is complete
+      // After child is complete, shell returns to main loop 
       waitpid(pid, NULL, 0);
-    } 
+    }
   }
 }
 
@@ -235,6 +248,14 @@ int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[]
       // If glob returns successful/matches found, start token expansion 
       if(status == 0){
         for(int i = 0; i < results.gl_pathc; i++){
+            
+          // Handle overflow 
+          if(count >= MAX_NUM_TOKENS -1){
+            globfree(&results);
+            return -1;
+          }
+
+          // Copy into expanded tokens array 
           strcpy(expandedStorage[count], results.gl_pathv[i]);
           expandedTokens[count] = expandedStorage[count]; // gl_pathv stores file names 
           count++; 
@@ -253,6 +274,9 @@ int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[]
 
     // Normal Tokens 
     else{
+      if(count >= MAX_NUM_TOKENS -1){
+        return -1;
+      }
       strcpy(expandedStorage[count], token[n]);
       expandedTokens[count] = expandedStorage[count];
       count++; 
