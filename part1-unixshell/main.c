@@ -33,8 +33,9 @@ int main(int argc, char *argv[]){
   Command command[MAX_NUM_COMMANDS];
   char prompt[256] = "$ ";
 
-  ignore_interrupts(); // Disables CTRL+C / CTRL+Z / CTRL+\ 
+
   signalHandlerSetup(); // Register signal handler 
+  ignore_interrupts(); // Disables CTRL+C / CTRL+Z / CTRL+\ 
  
   // History initialization 
   FILE *historyfile;
@@ -175,7 +176,7 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   } 
 
   if (strcmp(cmd, "!!") == 0) {
-    reenact_history(-1, inputLine, &reenactingHistory);
+    reenact_history(-1, inputLine, reenactingHistory);
     return 2;
   }
 

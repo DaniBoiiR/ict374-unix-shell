@@ -93,5 +93,5 @@ void ignore_interrupts() {
   sigaddset(&sigs, SIGINT);
   sigaddset(&sigs, SIGQUIT);
   sigaddset(&sigs, SIGTSTP);
-  sigprocmask(SIG_SETMASK, &sigs, NULL);
+  sigprocmask(SIG_BLOCK, &sigs, NULL);
 }
