@@ -17,7 +17,7 @@
 
 void saveHistory(char *inputLine, FILE *historyfile);
 int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory);
-int executeCommand(Command *command); // Executes external commands (Seperators ; and &)
+void executeCommand(Command *command); // Executes external commands (Seperators ; and &)
 //int executePipe(Command *command); // Executes Pipes (|)
 
 int main(int argc, char *argv[]){
@@ -42,16 +42,14 @@ int main(int argc, char *argv[]){
       if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
         fclose(historyfile);
         break;
-      }
-      
-      saveHistory(inputLine, historyfile); // Saves command 
+      }      
     } else if (reenactingHistory == 1) {
       // reenact_history() sets the input line to the chosen line of history
       reenactingHistory = 0; // allows the user to enter input in the next iteration
     }
 
     inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
-    saveHistory(inputLine, historyfile)l; // Saves command 
+    saveHistory(inputLine, historyfile); // Saves command 
     int tokenSize = tokenize(inputLine, token);
     
     // Checks for error 
@@ -69,7 +67,10 @@ int main(int argc, char *argv[]){
 
     // Print and execute the commands 
     for(int n = 0; n < commandSize; n++){
-      
+     
+      // Skip Empty Command 
+      if(commandSize == 0) continue; 
+
       printf("Command %d: ", n+1);
 
       for(int i = command[n].first; i <= command[n].last; i++){
@@ -84,7 +85,7 @@ int main(int argc, char *argv[]){
       }
       // Execute Unix Shell Commands 
       else{
-        executeCommand(command);
+        executeCommand(&command[n]);
       }
     }
   }
@@ -147,7 +148,7 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   } 
 
   if (strcmp(cmd, "!!") == 0) {
-    reenact_history(-1, inputLine, &reenactingHistory);
+    reenact_history(-1, inputLine, reenactingHistory);
     return 1;
   }
 
@@ -155,31 +156,30 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
 }
 
 // Executes external Non-Built in Unix commands usign execp 
-int executeCommand(Command *command){
+void executeCommand(Command *command){
   int pid = fork(); // All external commands will be handled by child processes 
-
-  if(pid > 0){ // In Parent 
-    waitpid(pid, NULL, 0);
-  }
-
-  if(pid == 0){ // In Child 
-    execvp(command[n].argv[0], command[n].argv); // Run command in child process 
-    perror("execv failed");
-    exit(1);
-  }
 
   if(pid < 0){ // Fork failure 
     perror("fork");
   }
 
-  // Parent Handling Background processes and & operator
-  if(strcmp(command->sep, "&") == 0){
-    return; // Returns back to main loop to execute next command concurrently 
+  if(pid == 0){ // In Child 
+    execvp(command->argv[0], command->argv); // Run command in child process 
+    perror("execv failed");
+    exit(1);
   }
 
-  // Sequential Handling. Shell has to wait until child process is complete
-  // After child is complete, shell returns to main loop 
+  // In Parent
+  // Parent Handling Background processes and & operator
   else{
-    waitpid(pid, NULL, 0);
-  } 
+    if(strcmp(command->sep, "&") == 0){
+      return; // Returns back to main loop to execute next command concurrently 
+    }
+
+    // Sequential Handling. Shell has to wait until child process is complete
+    // After child is complete, shell returns to main loop 
+    else{
+      waitpid(pid, NULL, 0);
+    } 
+  }
 }
