@@ -17,6 +17,8 @@
 
 void saveHistory(char *inputLine, FILE *historyfile);
 int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory);
+int executeCommand(Command *command); // Executes external commands (Seperators ; and &)
+//int executePipe(Command *command); // Executes Pipes (|)
 
 int main(int argc, char *argv[]){
   // Initialize Variables
@@ -41,12 +43,15 @@ int main(int argc, char *argv[]){
         fclose(historyfile);
         break;
       }
+      
+      saveHistory(inputLine, historyfile); // Saves command 
     } else if (reenactingHistory == 1) {
       // reenact_history() sets the input line to the chosen line of history
       reenactingHistory = 0; // allows the user to enter input in the next iteration
     }
 
     inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
+    saveHistory(inputLine, historyfile)l; // Saves command 
     int tokenSize = tokenize(inputLine, token);
     
     // Checks for error 
@@ -57,7 +62,7 @@ int main(int argc, char *argv[]){
     
     // Initalize command array 
     for(int n = 0; n < MAX_NUM_COMMANDS; n++){
-      initializeCommandStructure(command);
+      initializeCommandStructure(&command[n]);
     }
 
     int commandSize = separateCommands(token, command);
@@ -73,37 +78,13 @@ int main(int argc, char *argv[]){
       printf("\n");
       printf("Separator: %s\n", command[n].sep);
 
-      // Exits the program after exit is input. 
-      if (strcmp(command[n].argv[0], "exit") == 0) {
-        printf("Exiting shell...\n");
-        fclose(historyfile);
-        exit(0);
-      } 
-
-      // Save input line to history
-      fputs(inputLine, historyfile);
-      fputs("\n", historyfile);
-      int flush = fflush(historyfile);
-      printf("%d", flush);
-
       // Execute Built in shell commands. 
-      if(executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory){
+      if(executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory)){
         continue; 
       }
       // Execute Unix Shell Commands 
       else{
-
-        int pid = fork();
-        if(pid > 0){ // In Parent 
-          waitpid(pid, NULL, 0);
-        }
-        if (/*this is the child (the command)*/ pid == 0) {
-          execvp(command[n].argv[0], command[n].argv);
-          perror("execv failed");
-        }
-        if (/*fork failed*/ pid < 0) {
-          perror("fork");
-        }
+        executeCommand(command);
       }
     }
   }
@@ -111,6 +92,7 @@ int main(int argc, char *argv[]){
 }
 
 // Save History
+// TODO: ADD to the built in commands instead of putting this on main 
 void saveHistory(char *inputLine, FILE *historyfile){
   // First checks if fputs failed 
   if(fputs(inputLine, historyfile) == EOF ||fputs("\n", historyfile) == EOF){
@@ -123,8 +105,15 @@ void saveHistory(char *inputLine, FILE *historyfile){
 }
 
 // Executes Built in Commands 
-int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory){
+int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory){
   char *cmd = command->argv[0]; 
+
+  // Exits the program after exit is input. 
+  if (strcmp(cmd, "exit") == 0) {
+    printf("Exiting shell...\n");
+    fclose(historyfile);
+    exit(0);
+  }
 
   // Return 1 If commands are Built in 
   if (strcmp(cmd, "pwd") == 0) {
@@ -163,4 +152,34 @@ int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLi
   }
 
   return 0; // If command is not a Built in shell comamnd 
+}
+
+// Executes external Non-Built in Unix commands usign execp 
+int executeCommand(Command *command){
+  int pid = fork(); // All external commands will be handled by child processes 
+
+  if(pid > 0){ // In Parent 
+    waitpid(pid, NULL, 0);
+  }
+
+  if(pid == 0){ // In Child 
+    execvp(command[n].argv[0], command[n].argv); // Run command in child process 
+    perror("execv failed");
+    exit(1);
+  }
+
+  if(pid < 0){ // Fork failure 
+    perror("fork");
+  }
+
+  // Parent Handling Background processes and & operator
+  if(strcmp(command->sep, "&") == 0){
+    return; // Returns back to main loop to execute next command concurrently 
+  }
+
+  // Sequential Handling. Shell has to wait until child process is complete
+  // After child is complete, shell returns to main loop 
+  else{
+    waitpid(pid, NULL, 0);
+  } 
 }
