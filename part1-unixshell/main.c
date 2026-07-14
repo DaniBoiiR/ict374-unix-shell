@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <glob.h>
 #include "token.h"
 #include "command.h"
 #include "builtin.h"
@@ -21,11 +22,14 @@ void executeCommand(Command *command); // Executes external commands (Seperators
 //int executePipe(Command *command); // Executes Pipes (|)
 void claim_children(int sig); // Function to collect zombie processes
 void signalHandlerSetup();
+int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[][COMMAND_LINE_SIZE], int tokenSize);
   
 int main(int argc, char *argv[]){
   // Initialize Variables
   char inputLine[COMMAND_LINE_SIZE];
-  char *token[MAX_NUM_TOKENS];
+  char *token[MAX_NUM_TOKENS]; // Inital tokenized lines 
+  char expandedStorage[MAX_NUM_TOKENS][COMMAND_LINE_SIZE];
+  char *expandedTokens[MAX_NUM_TOKENS]; // After glob() for wildcard implementation
   Command command[MAX_NUM_COMMANDS];
   char prompt[256] = "$ ";
 
@@ -54,9 +58,10 @@ int main(int argc, char *argv[]){
     inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
     saveHistory(inputLine, historyfile); // Saves command 
     int tokenSize = tokenize(inputLine, token);
+    int expandedTokensSize = expandWildCard(token, expandedTokens, expandedStorage, tokenSize);
     
     // Checks for error 
-    if(tokenSize == -1){
+    if(expandedTokensSize == -1){
       printf("Too many tokens\n");
       continue; 
     }
@@ -66,7 +71,7 @@ int main(int argc, char *argv[]){
       initializeCommandStructure(&command[n]);
     }
 
-    int commandSize = separateCommands(token, command);
+    int commandSize = separateCommands(expandedTokens, command);
 
     // Skip Empty Command 
     if(commandSize == 0) continue; 
@@ -77,7 +82,7 @@ int main(int argc, char *argv[]){
       printf("Command %d: ", n+1);
 
       for(int i = command[n].first; i <= command[n].last; i++){
-        printf("%s ", token[i]);
+        printf("%s ", expandedTokens[i]);
       }
       printf("\n");
       printf("Separator: %s\n", command[n].sep);
@@ -110,7 +115,6 @@ void saveHistory(char *inputLine, FILE *historyfile){
 
 // Executes Built in Commands 
 int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory){
-  if(command->argv == NULL || command->argv[0] == NULL) return 0; // Null protection 
   char *cmd = command->argv[0]; 
 
   // Null protection 
@@ -209,4 +213,52 @@ void signalHandlerSetup(){
   sigemptyset(&act.sa_mask); // Dont block other signals 
   act.sa_flags = SA_NOCLDSTOP; // Not catch sopped children 
   sigaction(SIGCHLD, &act, NULL); // When a zombie signal is found, claim children is fired by the signal handler 
+}
+
+// TODO: Move this to token.c and token.h respectively 
+// BUG: potential overflow with over 500 files if found. add edge case check 
+int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[][COMMAND_LINE_SIZE], int tokenSize){
+  int count = 0; 
+
+  // Exit if empty token 
+  if(tokenSize == 0) return 0;
+
+  for(int n = 0; n < tokenSize; n++){
+    
+    // If wild card is found 
+    if((strchr(token[n], '*')) != NULL || strchr(token[n], '?') != NULL){
+      
+      // results store Count of matched paths, List of matched pathnames, and Slots reserve in gl_pathv
+      glob_t results; 
+      int status = glob(token[n], 0, NULL, &results); // Glob searches matching patterns 
+
+      // If glob returns successful/matches found, start token expansion 
+      if(status == 0){
+        for(int i = 0; i < results.gl_pathc; i++){
+          strcpy(expandedStorage[count], results.gl_pathv[i]);
+          expandedTokens[count] = expandedStorage[count]; // gl_pathv stores file names 
+          count++; 
+        }
+      } 
+       
+      // If no matches found, keep original token
+      else {
+        strcpy(expandedStorage[count], token[n]);
+        expandedTokens[count] = expandedStorage[count];
+        count++; 
+      }
+      
+      globfree(&results); // Frees dynamically allocated memory 
+    } 
+
+    // Normal Tokens 
+    else{
+      strcpy(expandedStorage[count], token[n]);
+      expandedTokens[count] = expandedStorage[count];
+      count++; 
+    }
+  }
+
+  expandedTokens[count] = NULL; // null terminator 
+  return count; 
 }
