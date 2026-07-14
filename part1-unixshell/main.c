@@ -15,16 +15,19 @@
 #include "command.h"
 #include "builtin.h"
 
+void saveHistory(char *inputLine, FILE *historyfile);
+int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory);
+
 int main(int argc, char *argv[]){
   // Initialize Variables
   char inputLine[COMMAND_LINE_SIZE];
   char *token[MAX_NUM_TOKENS];
   Command command[MAX_NUM_COMMANDS];
-  char prompt[256] = "% ";
+  char prompt[256] = "$ ";
 
   ignore_interrupts();
  
-  // History
+  // History initialization 
   FILE *historyfile;
   historyfile = fopen(HISTORY_FILE, "a");
   int reenactingHistory = 0;
@@ -35,8 +38,8 @@ int main(int argc, char *argv[]){
     if (reenactingHistory == 0) {
       // Breaks out the loop if fgets fails. 
       if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
-      fclose(historyfile);
-          break;
+        fclose(historyfile);
+        break;
       }
     } else if (reenactingHistory == 1) {
       // reenact_history() sets the input line to the chosen line of history
@@ -44,7 +47,6 @@ int main(int argc, char *argv[]){
     }
 
     inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
-
     int tokenSize = tokenize(inputLine, token);
     
     // Checks for error 
@@ -71,7 +73,8 @@ int main(int argc, char *argv[]){
       printf("\n");
       printf("Separator: %s\n", command[n].sep);
 
-      if (strcasecmp(command[n].argv[0], "exit") == 0) {
+      // Exits the program after exit is input. 
+      if (strcmp(command[n].argv[0], "exit") == 0) {
         printf("Exiting shell...\n");
         fclose(historyfile);
         exit(0);
@@ -83,26 +86,17 @@ int main(int argc, char *argv[]){
       int flush = fflush(historyfile);
       printf("%d", flush);
 
-      if (strcmp(command[n].argv[0], "pwd") == 0) {
-        pwd();
-      } else if (strcmp(command[n].argv[0], "cd") == 0) {
-        cd(command[n].argv[1]);
-      } else if (strcmp(command[n].argv[0], "walk") == 0) {
-        walk(command[n].argv[1]);
-      } else if (strcmp(command[n].argv[0], "prompt") == 0) {
-        change_prompt(prompt, command[n].argv[1]);
-      } else if (strcmp(command[n].argv[0], "history") == 0) {
-        history();
-      } else if (strcmp(command[n].argv[0], "clear") == 0) {
-        clear(historyfile);
-      } else if (strcmp(command[n].argv[0], "!!") == 0) {
-          reenact_history(-1, inputLine, &reenactingHistory);
+      // Execute Built in shell commands. 
+      if(executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory){
+        continue; 
       }
-      else {
+
+      // Execute Unix Shell Commands 
+      else{
+
         int pid = fork();
-        if (/*this is the parent (the shell)*/ pid > 0) {
-          //waitpid(pid);
-          wait((int*)0);
+        if(pid > 0){ // In Parent 
+          waitpid(pid, NULL, 0);
         }
         if (/*this is the child (the command)*/ pid == 0) {
           execvp(command[n].argv[0], command[n].argv);
@@ -115,4 +109,47 @@ int main(int argc, char *argv[]){
     }
   }
   return 0;
+}
+
+// Executes Built in Commands 
+int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory){
+  char *cmd = command->argv[0]; 
+
+  // Return 1 If commands are Built in 
+  if (strcmp(cmd, "pwd") == 0) {
+    pwd();
+    return 1;
+  }
+
+  if (strcmp(cmd, "cd") == 0) {
+    cd(command->argv[1]);    
+    return 1;
+  } 
+
+  if (strcmp(cmd, "walk") == 0) {
+    walk(command->argv[1]);
+    return 1; 
+  } 
+
+  if (strcmp(cmd, "prompt") == 0) {
+    change_prompt(prompt, command->argv[1]);
+    return 1; 
+  }
+
+  if (strcmp(cmd, "history") == 0) {
+    history();
+    return 1; 
+  } 
+
+  if (strcmp(cmd, "clear") == 0) {
+    clear(historyfile);
+    return 1; 
+  } 
+
+  if (strcmp(cmd, "!!") == 0) {
+    reenact_history(-1, inputLine, &reenactingHistory);
+    return 1;
+  }
+
+  return 0; // If command is not a Built in shell comamnd 
 }
