@@ -19,7 +19,9 @@ void saveHistory(char *inputLine, FILE *historyfile);
 int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory);
 void executeCommand(Command *command); // Executes external commands (Seperators ; and &)
 //int executePipe(Command *command); // Executes Pipes (|)
-
+void claim_children(int sig); // Function to collect zombie processes
+void signalHandlerSetup();
+  
 int main(int argc, char *argv[]){
   // Initialize Variables
   char inputLine[COMMAND_LINE_SIZE];
@@ -27,7 +29,8 @@ int main(int argc, char *argv[]){
   Command command[MAX_NUM_COMMANDS];
   char prompt[256] = "$ ";
 
-  ignore_interrupts();
+  ignore_interrupts(); // Disables CTRL+C / CTRL+Z / CTRL+\ 
+  signalHandlerSetup(); // Register signal handler 
  
   // History initialization 
   FILE *historyfile;
@@ -65,11 +68,11 @@ int main(int argc, char *argv[]){
 
     int commandSize = separateCommands(token, command);
 
+    // Skip Empty Command 
+    if(commandSize == 0) continue; 
+
     // Print and execute the commands 
     for(int n = 0; n < commandSize; n++){
-     
-      // Skip Empty Command 
-      if(commandSize == 0) continue; 
 
       printf("Command %d: ", n+1);
 
@@ -107,7 +110,11 @@ void saveHistory(char *inputLine, FILE *historyfile){
 
 // Executes Built in Commands 
 int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory){
+  if(command->argv == NULL || command->argv[0] == NULL) return 0; // Null protection 
   char *cmd = command->argv[0]; 
+
+  // Null protection 
+  if(command->argv == NULL || command->argv[0] == NULL) return 0;
 
   // Exits the program after exit is input. 
   if (strcmp(cmd, "exit") == 0) {
@@ -182,4 +189,24 @@ void executeCommand(Command *command){
       waitpid(pid, NULL, 0);
     } 
   }
+}
+
+// Claims zombie child processes when child process is finished executing 
+void claim_children(int sig){
+  pid_t pid = 1; 
+  
+  // Claim zombied by collecting exit status through waitpid (retrives exit status of specific pid)
+  // -1 = Wait for any child process in process group 
+  // NULL ignores child exit status
+  // WNOHANG = Prevents functions blocking. 
+  while(waitpid(-1, NULL, WNOHANG) > 0);
+}
+
+// Sets up signal handler to collect zombie child processes
+void signalHandlerSetup(){
+  struct sigaction act; 
+  act.sa_handler = claim_children; // Assign function pointer for reliable signal
+  sigemptyset(&act.sa_mask); // Dont block other signals 
+  act.sa_flags = SA_NOCLDSTOP; // Not catch sopped children 
+  sigaction(SIGCHLD, &act, NULL); // When a zombie signal is found, claim children is fired by the signal handler 
 }
