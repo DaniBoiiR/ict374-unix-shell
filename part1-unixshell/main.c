@@ -225,7 +225,7 @@ void signalHandlerSetup(){
   struct sigaction act; 
   act.sa_handler = claim_children; // Assign function pointer for reliable signal
   sigemptyset(&act.sa_mask); // Dont block other signals 
-  act.sa_flags = SA_NOCLDSTOP; // Not catch sopped children 
+  act.sa_flags = SA_NOCLDSTOP | SA_RESTART; // Not catch sopped children 
   sigaction(SIGCHLD, &act, NULL); // When a zombie signal is found, claim children is fired by the signal handler 
 }
 
