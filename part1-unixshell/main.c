@@ -109,6 +109,21 @@ int main(int argc, char *argv[]){
       printf("Stdin file: %s\n", command[n].stdin_file);
       printf("Stdout file: %s\n", command[n].stdout_file);
 
+      // Creating a pipeline if Pipes are present in the command
+      if(strcmp(command[n].sep, "|") == 0){
+        int first, last = n; // Current index. Start of pipeline 
+        int i = n; // Index to be iterated. 
+
+        // Find end of pipeline 
+        while(last < commandSize && strcmp(command[i].sep, "|") == 0){
+          last++;
+        }
+
+        executePipe(command, first, last);
+        n = last;
+        continue; 
+      }
+
       // Execute Built in shell commands. 
       int result = executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory);
 
@@ -119,22 +134,6 @@ int main(int argc, char *argv[]){
       // IF !! is entered. break loop 
       if(result == 2){
         break;
-      }
-
-      // Creating a pipelien if Pipes are present in the command
-      if(strcmp(strcommand[n].sep, "|") == 0){
-        int first = n; // Current index. Start of pipeline 
-        int i = n; // Index to be iterated. 
-        int last; 
-
-        // Find end of pipeline 
-        while(strcmp(command.sep[i], "|") == 0){
-          last = i; 
-          i++;
-        }
-
-        executePipe(command, first, last);
-        continue; 
       }
 
       // Execute Unix Shell Commands 
