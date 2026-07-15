@@ -1,93 +1,58 @@
 #include "builtin.h"
 
 void pwd() {
-    char cwd[4096];
-    getcwd(cwd, sizeof(cwd));
-    if (cwd == NULL) {
-        perror("getcwd failed");
-        return;
-    }
-    printf("%s\n", cwd);
+  char cwd[4096];
+  getcwd(cwd, sizeof(cwd));
+  if (cwd == NULL) {
+    perror("getcwd failed");
+    return;
+  }
+  printf("%s\n", cwd);
 }
 
 void cd(char * path) {
-    if (path == NULL) {
-        return;
-    } else if (chdir(path) != 0) {
-        perror("cd");
-    }
-    return;
+  if (path == NULL) {
+      return;
+  } else if (chdir(path) != 0) {
+    perror("cd");
+  }
+  return;
 }
 
 void walk(char * path) {
-    if (path == NULL) {
-        if (chdir(getenv("HOME")) != 0) {
-            perror("cd");
-        }
-        return;
-    } else if (chdir(path) != 0) {
+  if (path == NULL) {
+    if (chdir(getenv("HOME")) != 0) {
         perror("cd");
     }
     return;
+  } else if (chdir(path) != 0) {
+    perror("cd");
+  }
+  return;
 }
 
-// Bug: history() will not work if the pwd is not where the history file already is
-void history() {
-    FILE *historyfile;
-    historyfile = fopen(HISTORY_FILE, "r");
-    char line[COMMAND_LINE_SIZE];
-    int lineNumber = 1;
-    while (fgets(line, sizeof(line), historyfile)) {
-        printf("%d  %s", lineNumber, line);
-        lineNumber++;
-    }
-    fclose(historyfile);
-}
-
-// lineNumberToReenact == -1 refers to the last line of history 
-// Only !! is implemented at the moment
-void reenact_history(int lineNumberToReenact, char* inputLine, int* reenactingHistory) {
-    FILE *historyfile;
-    historyfile = fopen(HISTORY_FILE, "r");
-    char line[COMMAND_LINE_SIZE];
-    int lineNumber = 1;
-    while (fgets(line, sizeof(line), historyfile)) {
-        if (lineNumber == lineNumberToReenact) {
-            strncpy(inputLine, line, COMMAND_LINE_SIZE); // Replace the next iteration's input prompt with a line from the history file
-            *reenactingHistory = 1; // Set a flag to mark that a line from history will be executed instead of user input
-            fclose(historyfile);
-            return;
-        }
-        lineNumber++;
-    }
-    if (lineNumberToReenact == -1) { // Last line
-        strncpy(inputLine, line, COMMAND_LINE_SIZE); // Replace the next iteration's input prompt with a line from the history file
-        *reenactingHistory = 1; // Set a flag to mark that a line from history will be executed instead of user input
-    } else { // The parameter was greater than the number of lines in the history file
-        
-    }
-    fclose(historyfile);
-}
-
-// There is probably a better way to do this
-void clear(FILE *historyfile) {
-    // Close and open for writing to erase contents
-    fclose(historyfile);
-    historyfile = fopen(HISTORY_FILE, "w");
-    // Close and open for appending to start recording history again
-    fclose(historyfile);
-    historyfile = fopen(HISTORY_FILE, "a");
+void history(FILE *historyfile) {
+  char line[COMMAND_LINE_SIZE];
+  int lineNumber = 1;
+  // Move the cursor to the beginning of the file in case it is at the end
+  fseek(historyfile, 0, SEEK_SET);
+  while (fgets(line, sizeof(line), historyfile)) {
+      printf("%d  %s", lineNumber, line);
+      lineNumber++;
+  }
+  // Move the cursor to the beginning of the file after looping over it
+  fseek(historyfile, 0, SEEK_SET);
 }
 
 // Bug: Prompts with spaces are not processed properly
 void change_prompt(char* prompt, char* newPrompt) {
-    strcpy(prompt, newPrompt);
-    return;
+  strcpy(prompt, newPrompt);
+  return;
 }
 
 void ignore_interrupts() {
   // Ignore Ctrl+C, Ctrl+Z and Ctrl+\
-  
+
   sigset_t sigs;
   sigemptyset(&sigs);
   sigaddset(&sigs, SIGINT);
@@ -96,29 +61,30 @@ void ignore_interrupts() {
   sigprocmask(SIG_BLOCK, &sigs, NULL);
 }
 
-// lineNumberToReenact == -1 refers to the last line of history 
-// Only !! is implemented at the moment
-
-void getLineOfHistory(int lineNumberToGet, char* lineToReturnTo) {
-    FILE *historyfile;
-    historyfile = fopen(HISTORY_FILE, "r");
-    char line[COMMAND_LINE_SIZE];
-    int lineNumber = 1;
-    while (fgets(line, sizeof(line), historyfile)) {
-        if (lineNumber == lineNumberToGet) {
-            strncpy(lineToReturnTo, line, COMMAND_LINE_SIZE);
-            fclose(historyfile);
-            return;
-        }
-        lineNumber++;
-    }
-    fclose(historyfile);
-    if (lineNumberToGet > lineNumber) {
-        strcpy(lineToReturnTo, "");
+// TODO: Search history by !string 
+void getLineOfHistory(FILE* historyfile, int lineNumberToGet, char* lineToReturnTo) {
+  char line[COMMAND_LINE_SIZE];
+  int lineNumber = 1;
+    
+  fseek(historyfile, 0, SEEK_SET);
+  while (fgets(line, sizeof(line), historyfile)) {
+    if (lineNumber == lineNumberToGet) {
+        strncpy(lineToReturnTo, line, COMMAND_LINE_SIZE);
+        fseek(historyfile, 0, SEEK_SET);
         return;
     }
-    if (lineNumberToGet == -1) {
-        // If it reaches here, the cursor will already be pointing at the last line
-        strncpy(lineToReturnTo, line, COMMAND_LINE_SIZE);
-    }
+    lineNumber++;
+  }
+  fseek(historyfile, 0, SEEK_SET);
+
+  if (lineNumberToGet > lineNumber) {
+    strcpy(lineToReturnTo, ""); // Copy an empty string to the input line, which will be ignored in the next iteration
+    fseek(historyfile, 0, SEEK_SET);
+    return;
+  }
+  if (lineNumberToGet == -1) {
+    // If it reaches here, the cursor will already be pointing at the last line
+    strncpy(lineToReturnTo, line, COMMAND_LINE_SIZE);
+    fseek(historyfile, 0, SEEK_SET);
+  }
 }

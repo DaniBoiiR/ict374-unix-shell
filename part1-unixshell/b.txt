@@ -13,3 +13,7 @@ shell
 token.c
 token.h
 token.o
+    PID TTY          TIME CMD
+  40625 pts/0    00:00:00 bash
+  46449 pts/0    00:00:00 shell
+  46532 pts/0    00:00:00 ps

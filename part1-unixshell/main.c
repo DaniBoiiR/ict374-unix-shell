@@ -19,14 +19,16 @@
 
 void saveHistory(char *inputLine, FILE *historyfile);
 int executeBuiltIn(Command *cmd, char prompt[], FILE *historyfile, char *inputLine, int *reenactingHistory);
-void executeCommand(Command *command); // Executes external commands (Seperators ; and &)
-//int executePipe(Command *command); // Executes Pipes (|)
+void executeCommand(Command *command); // Forks external commands (Seperators ; and &)
+void runProgram(Command *command); // Runs the program 
+int executePipe(Command commands[], int first, int last); 
 void claim_children(int sig); // Function to collect zombie processes
 void signalHandlerSetup();
 int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[][COMMAND_LINE_SIZE], int tokenSize);
-void redirectstdin(char* stdin_file);
+void redirectstdin (char* stdin_file);
 void redirectstdout(char* stdout_file);
-  
+void redirectstderr(char* stderr_file);
+
 int main(int argc, char *argv[]){
   // Initialize Variables
   char inputLine[COMMAND_LINE_SIZE];
@@ -35,21 +37,31 @@ int main(int argc, char *argv[]){
   char *expandedTokens[MAX_NUM_TOKENS]; // After glob() for wildcard implementation
   Command command[MAX_NUM_COMMANDS];
   char prompt[256] = "$ ";
-  int saved_stdin = dup(0);  // For reverting to after redirecting
+  int saved_stdin  = dup(0); // For reverting to after redirecting
   int saved_stdout = dup(1); // For reverting to after redirecting
+  int saved_stderr = dup(2); // For reverting to after redirecting
 
   signalHandlerSetup(); // Register signal handler 
   ignore_interrupts(); // Disables CTRL+C / CTRL+Z / CTRL+\ 
  
   // History initialization 
+  char historypath[4096];
+  getcwd(historypath, sizeof(historypath));
+  if (historypath == NULL) {
+    perror("getcwd failed");
+    return -1;
+  }
+  strcat(historypath, "/");
+  strcat(historypath, HISTORY_FILE);
   FILE *historyfile;
-  historyfile = fopen(HISTORY_FILE, "a");
+  historyfile = fopen(historypath, "a+");
   int reenactingHistory = 0;
 
   while(1){
     // Reset the descriptors of stdin and stdout if they were redirected
     dup2(saved_stdin , 0);
     dup2(saved_stdout, 1);
+    dup2(saved_stderr, 2);
 
     printf("%s", prompt);
      
@@ -60,7 +72,6 @@ int main(int argc, char *argv[]){
         break;
       }      
     } else if (reenactingHistory == 1) {
-      // reenact_history() sets the input line to the chosen line of history
       reenactingHistory = 0; // allows the user to enter input in the next iteration
     }
 
@@ -68,10 +79,10 @@ int main(int argc, char *argv[]){
     
     // Skip empty input lines
     if(strlen(inputLine) == 0){
-    continue;
-}
+      continue;
+    }
     
-    if(strncmp(inputLine, "!", 1) != 0 && strlen(inputLine) > 0){
+    if(strncmp(inputLine, "!", 1) != 0 && strlen(inputLine) > 0 && strncmp(inputLine, "exit", 4) != 0 && strncmp(inputLine, "history", 7) != 0){
       saveHistory(inputLine, historyfile);
     }
 
@@ -106,6 +117,21 @@ int main(int argc, char *argv[]){
       printf("Separator: %s\n", command[n].sep);
       printf("Stdin file: %s\n", command[n].stdin_file);
       printf("Stdout file: %s\n", command[n].stdout_file);
+
+      // Creating a pipeline if Pipes are present in the command
+      if(strcmp(command[n].sep, "|") == 0){
+        int first = n; // Current index. Start of pipeline 
+        int last = n; // End of pipeline 
+
+        // Find end of pipeline 
+        while(last < commandSize - 1 && strcmp(command[last].sep, "|") == 0){
+          last++;
+        }
+
+        executePipe(command, first, last);
+        n = last;
+        continue; 
+      }
 
       // Execute Built in shell commands. 
       int result = executeBuiltIn(&command[n], prompt, historyfile, inputLine, &reenactingHistory);
@@ -147,6 +173,13 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   if(command->argv == NULL || command->argv[0] == NULL) return 0;
   char *cmd = command->argv[0]; 
 
+  // Exits the program after exit is input. 
+  if (strcmp(cmd, "exit") == 0) {
+    printf("Exiting shell...\n");
+    fclose(historyfile);
+    exit(0);
+  }
+
   if (command->stdin_file != NULL) {
     redirectstdin(command->stdin_file);
   }
@@ -186,18 +219,17 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   }
 
   if (strcmp(cmd, "history") == 0) {
-    history();
+    //history(historypath);
+    history(historyfile);
     return 1; 
   } 
 
-  if (strcmp(cmd, "clear") == 0) {
-    clear(historyfile);
-    return 1; 
-  } 
-
+  // Executes line of code from history with corresponding history index 
   if (strncmp(cmd, "!", 1) == 0) {
+    // Executing previous command 
     if (strncmp(cmd, "!!", 2) == 0) {
-      reenact_history(-1, inputLine, reenactingHistory);
+      getLineOfHistory(historyfile, -1, inputLine);
+      *reenactingHistory = 1;
     } else { // Extract the number after the !
       int strnum = 0;
       for (int i = 1; i < strlen(cmd) && isdigit(cmd[i]); i++) { // Iterate over the characters after !
@@ -206,7 +238,8 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
           strnum = strnum * 10 + atoi(digit); // Convert the C string to a number and add it to strnum
         }
       }
-      reenact_history(strnum, inputLine, reenactingHistory);
+      getLineOfHistory(historyfile, strnum, inputLine);
+      *reenactingHistory = 1;
     }
     return 2;
   }
@@ -215,7 +248,7 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
 }
 
 void redirectstdin(char* stdin_file) {
-  if ((access(stdin_file, F_OK) != -1) && (access(stdin_file, R_OK) != -1)) {
+  if ((access(stdin_file, F_OK) == -1)) {
     return; // File does not exist
   }
   int stdin_desc = open(stdin_file, O_RDONLY);
@@ -223,7 +256,7 @@ void redirectstdin(char* stdin_file) {
 }
 
 void redirectstdout(char* stdout_file) {
-  if ((access(stdout_file, F_OK) != -1) && (access(stdout_file, W_OK) != -1)) {
+  if ((access(stdout_file, F_OK) == -1)) {
     FILE* newFile = fopen(stdout_file, "w");
     fclose(newFile); // Open and close to create a new file if it does not exist
   }
@@ -231,28 +264,27 @@ void redirectstdout(char* stdout_file) {
   dup2(stdout_desc, STDOUT_FILENO);
 }
 
+// TODO: How and where can we use this function?
+void redirectstderr(char* stderr_file) {
+  if ((access(stderr_file, F_OK) == -1)) {
+    FILE* newFile = fopen(stderr_file, "w");
+    fclose(newFile); // Open and close to create a new file if it does not exist
+  }
+  int stderr_desc = open(stderr_file, O_WRONLY | O_APPEND);
+  dup2(stderr_desc, STDERR_FILENO);
+}
+
 // Executes external Non-Built in Unix commands usign execp 
 void executeCommand(Command *command){
-
-  if (command->stdin_file != NULL) {
-    redirectstdin(command->stdin_file);
-  }
-
-  if (command->stdout_file != NULL) {
-    redirectstdout(command->stdout_file);
-  }
-
   int pid = fork(); // All external commands will be handled by child processes 
+  
+  if(pid == 0){ // In Child 
+    runProgram(command);
+  }
 
   if(pid < 0){ // Fork failure 
     perror("fork");
     return;
-  }
-
-  if(pid == 0){ // In Child 
-    execvp(command->argv[0], command->argv); // Run command in child process 
-    perror("execv failed");
-    exit(1);
   }
 
   // In Parent
@@ -264,6 +296,86 @@ void executeCommand(Command *command){
       waitpid(pid, NULL, 0);
     }
   }
+}
+
+// Conducts the process of running the program inside of child fork 
+void runProgram(Command *command){
+  // Input Redirection
+  if (command->stdin_file != NULL) {
+    redirectstdin(command->stdin_file);
+  }
+
+  // Output Redirection
+  if (command->stdout_file != NULL) {
+    redirectstdout(command->stdout_file);
+  }
+
+  execvp(command->argv[0], command->argv); // Run command in child process 
+  perror("execv failed");
+  exit(1); 
+} 
+
+// Execute Pipe Unix commands 
+int executePipe(Command commands[], int first, int last){
+  int p[2]; // 0 for read | 1 for write
+  pid_t pid; 
+  int input = STDIN_FILENO; // stores read end of previous pipe 
+
+  // Fork each command into a seperate child process 
+  for(int n = first; n <= last; n++){
+    
+    // Create pipes for each command 
+    if(n != last){
+      if(pipe(p) < 0){
+        perror("Pipe Call"); return -1; 
+      }
+    }
+
+    pid = fork();
+
+    if(pid < 0){
+      perror("fork"); 
+      return -1;
+    }
+
+    // Process for each pipes 
+    if(pid == 0){
+      // Connect previous pipe to input 
+      if(input != STDIN_FILENO){
+        dup2(input, STDIN_FILENO);
+        close(input);
+      }
+
+      // Connect stdout to the next pipe 
+      if(n != last){
+        dup2(p[1], STDOUT_FILENO);
+        close(p[0]);
+        close(p[1]);
+      }
+
+      runProgram(&commands[n]);
+    }
+
+    // In Parent, Close pipe ends 
+    if(pid > 0){
+      if(input != STDIN_FILENO){
+        close(input);
+      }
+
+      // Save Input 
+      if(n != last){
+        close(p[1]); // Close write end
+        input = p[0]; // Save input 
+      }
+    }
+  }
+
+  // Wait for the pipeline commands to finish 
+  for(int n = first; n <= last; n++){
+    wait(NULL);
+  }
+
+  return 0;
 }
 
 // Claims zombie child processes when child process is finished executing 
