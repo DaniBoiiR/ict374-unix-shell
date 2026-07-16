@@ -31,17 +31,18 @@ void walk(char * path) {
   return;
 }
 
-// Bug: history() will not work if the pwd is not where the history file already is
-void history() {
-  FILE *historyfile;
-  historyfile = fopen(HISTORY_FILE, "r");
+void history(FILE *historyfile) {
   char line[COMMAND_LINE_SIZE];
   int lineNumber = 1;
+  // Move the cursor to the beginning of the file in case it is at the end
+  fseek(historyfile, 0, SEEK_SET);
+
   while (fgets(line, sizeof(line), historyfile)) {
       printf("%d  %s", lineNumber, line);
       lineNumber++;
   }
-  fclose(historyfile);
+
+  fseek(historyfile, 0, SEEK_SET); // Dont close 
 }
 
 // lineNumberToReenact == -1 refers to the last line of history 
@@ -77,6 +78,8 @@ void clear(FILE *historyfile) {
   // Close and open for appending to start recording history again
   fclose(historyfile);
   historyfile = fopen(HISTORY_FILE, "a");
+  // Move the cursor to the beginning of the file after looping over it
+  fseek(historyfile, 0, SEEK_SET);
 }
 
 // Bug: Prompts with spaces are not processed properly
@@ -98,27 +101,32 @@ void ignore_interrupts() {
 
 // lineNumberToReenact == -1 refers to the last line of history 
 // Only !! is implemented at the moment
-
-void getLineOfHistory(int lineNumberToGet, char* lineToReturnTo) {
-  FILE *historyfile;
-  historyfile = fopen(HISTORY_FILE, "r");
+// TODO: Search history by !string 
+void getLineOfHistory(FILE* historyfile, int lineNumberToGet, char* lineToReturnTo) {
   char line[COMMAND_LINE_SIZE];
   int lineNumber = 1;
+    
+  fseek(historyfile, 0, SEEK_SET);
   while (fgets(line, sizeof(line), historyfile)) {
     if (lineNumber == lineNumberToGet) {
         strncpy(lineToReturnTo, line, COMMAND_LINE_SIZE);
-        fclose(historyfile);
+        fseek(historyfile, 0, SEEK_SET);
         return;
     }
     lineNumber++;
   }
-  fclose(historyfile);
+
+  fseek(historyfile, 0, SEEK_SET);
+
   if (lineNumberToGet > lineNumber) {
-    strcpy(lineToReturnTo, "");
+    strcpy(lineToReturnTo, ""); // Copy an empty string to the input line, which will be ignored in the next iteration
+    fseek(historyfile, 0, SEEK_SET);
     return;
   }
+
   if (lineNumberToGet == -1) {
     // If it reaches here, the cursor will already be pointing at the last line
     strncpy(lineToReturnTo, line, COMMAND_LINE_SIZE);
+    fseek(historyfile, 0, SEEK_SET);
   }
 }

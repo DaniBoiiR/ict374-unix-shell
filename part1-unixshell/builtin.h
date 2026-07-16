@@ -13,14 +13,10 @@ void cd(char * path);
 
 void walk(char * path);
 
-void history();
-
-void clear(FILE *historyfile);
+void history(FILE *historyfile);
 
 void change_prompt(char* prompt, char* newPrompt);
 
-void reenact_history(int lineNumberToReenact, char* inputLine, int* reenactingHistory);
-
 void ignore_interrupts();
 
-void getLineOfHistory(int lineNumberToGet, char* lineToReturnTo);
+void getLineOfHistory(FILE* historyfile, int lineNumberToGet, char* lineToReturnTo);

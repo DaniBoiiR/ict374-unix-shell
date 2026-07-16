@@ -26,9 +26,10 @@ int executePipe(Command commands[], int first, int last);
 void claim_children(int sig); // Function to collect zombie processes
 void signalHandlerSetup();
 int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[][COMMAND_LINE_SIZE], int tokenSize);
-void redirectstdin(char* stdin_file);
+void redirectstdin (char* stdin_file);
 void redirectstdout(char* stdout_file);
-  
+void redirectstderr(char* stderr_file);
+
 int main(int argc, char *argv[]){
   // Initialize Variables
   char inputLine[COMMAND_LINE_SIZE];
@@ -37,21 +38,31 @@ int main(int argc, char *argv[]){
   char *expandedTokens[MAX_NUM_TOKENS]; // After glob() for wildcard implementation
   Command command[MAX_NUM_COMMANDS];
   char prompt[256] = "$ ";
-  int saved_stdin = dup(0);  // For reverting to after redirecting
+  int saved_stdin  = dup(0); // For reverting to after redirecting
   int saved_stdout = dup(1); // For reverting to after redirecting
+  int saved_stderr = dup(2); // For reverting to after redirecting
 
   signalHandlerSetup(); // Register signal handler 
   ignore_interrupts(); // Disables CTRL+C / CTRL+Z / CTRL+\ 
  
   // History initialization 
+  char historypath[4096];
+  getcwd(historypath, sizeof(historypath));
+  if (historypath == NULL) {
+    perror("getcwd failed");
+    return -1;
+  }
+  strcat(historypath, "/");
+  strcat(historypath, HISTORY_FILE);
   FILE *historyfile;
-  historyfile = fopen(HISTORY_FILE, "a");
+  historyfile = fopen(historypath, "a+");
   int reenactingHistory = 0;
 
   while(1){
     // Reset the descriptors of stdin and stdout if they were redirected
     dup2(saved_stdin , 0);
     dup2(saved_stdout, 1);
+    dup2(saved_stderr, 2);
 
     printf("%s", prompt);
      
@@ -62,7 +73,6 @@ int main(int argc, char *argv[]){
         break;
       }      
     } else if (reenactingHistory == 1) {
-      // reenact_history() sets the input line to the chosen line of history
       reenactingHistory = 0; // allows the user to enter input in the next iteration
     }
 
@@ -73,7 +83,7 @@ int main(int argc, char *argv[]){
       continue;
     }
     
-    if(strcmp(inputLine, "!!") != 0 && strncmp(inputLine, "!", 1) != 0 && strlen(inputLine) > 0){
+    if(strncmp(inputLine, "!", 1) != 0 && strlen(inputLine) > 0 && strncmp(inputLine, "exit", 4) != 0 && strncmp(inputLine, "history", 7) != 0){
       saveHistory(inputLine, historyfile);
     }
 
@@ -210,25 +220,17 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   }
 
   if (strcmp(cmd, "history") == 0) {
-    history();
+    //history(historypath);
+    history(historyfile);
     return 1; 
   } 
-
-  if (strcmp(cmd, "clear") == 0) {
-    clear(historyfile);
-    return 1; 
-  } 
-
-  // Executing previous command 
-  if (strcmp(cmd, "!!") == 0) {
-    reenact_history(-1, inputLine, reenactingHistory);
-    return 2;
-  }
 
   // Executes line of code from history with corresponding history index 
   if (strncmp(cmd, "!", 1) == 0) {
+    // Executing previous command 
     if (strncmp(cmd, "!!", 2) == 0) {
-      reenact_history(-1, inputLine, reenactingHistory);
+      getLineOfHistory(historyfile, -1, inputLine);
+      *reenactingHistory = 1;
     } else { // Extract the number after the !
       int strnum = 0;
       for (int i = 1; i < strlen(cmd) && isdigit(cmd[i]); i++) { // Iterate over the characters after !
@@ -237,7 +239,8 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
           strnum = strnum * 10 + atoi(digit); // Convert the C string to a number and add it to strnum
         }
       }
-      reenact_history(strnum, inputLine, reenactingHistory);
+      getLineOfHistory(historyfile, strnum, inputLine);
+      *reenactingHistory = 1;
     }
     return 2;
   }
@@ -246,7 +249,7 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
 }
 
 void redirectstdin(char* stdin_file) {
-  if ((access(stdin_file, F_OK) != -1) && (access(stdin_file, R_OK) != -1)) {
+  if ((access(stdin_file, F_OK) == -1)) {
     return; // File does not exist
   }
   int stdin_desc = open(stdin_file, O_RDONLY);
@@ -254,7 +257,7 @@ void redirectstdin(char* stdin_file) {
 }
 
 void redirectstdout(char* stdout_file) {
-  if ((access(stdout_file, F_OK) != -1) && (access(stdout_file, W_OK) != -1)) {
+  if ((access(stdout_file, F_OK) == -1)) {
     FILE* newFile = fopen(stdout_file, "w");
     fclose(newFile); // Open and close to create a new file if it does not exist
   }
@@ -262,8 +265,27 @@ void redirectstdout(char* stdout_file) {
   dup2(stdout_desc, STDOUT_FILENO);
 }
 
+// TODO: How and where can we use this function?
+void redirectstderr(char* stderr_file) {
+  if ((access(stderr_file, F_OK) == -1)) {
+    FILE* newFile = fopen(stderr_file, "w");
+    fclose(newFile); // Open and close to create a new file if it does not exist
+  }
+  int stderr_desc = open(stderr_file, O_WRONLY | O_APPEND);
+  dup2(stderr_desc, STDERR_FILENO);
+}
+
 // Executes external Non-Built in Unix commands usign execp 
 void executeCommand(Command *command){
+  // Input redirection and output redirection 
+  if (command->stdin_file != NULL) {
+    redirectstdin(command->stdin_file);
+  }
+
+  if (command->stdout_file != NULL) {
+    redirectstdout(command->stdout_file);
+  }
+
   int pid = fork(); // All external commands will be handled by child processes 
   
   if(pid == 0){ // In Child 
