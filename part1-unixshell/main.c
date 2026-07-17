@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <glob.h>
 #include <fcntl.h>
+#include <termios.h> // Used for arrow key and input reading 
 #include "token.h"
 #include "command.h"
 #include "builtin.h"
@@ -29,6 +30,7 @@ int expandWildCard(char *token[], char *expandedTokens[], char expandedStorage[]
 void redirectstdin (char* stdin_file);
 void redirectstdout(char* stdout_file);
 void redirectstderr(char* stderr_file);
+int readLine(char *line, int size, char *prompt);
 
 int main(int argc, char *argv[]){
   // Initialize Variables
@@ -44,7 +46,7 @@ int main(int argc, char *argv[]){
 
   signalHandlerSetup(); // Register signal handler 
   ignore_interrupts(); // Disables CTRL+C / CTRL+Z / CTRL+\ 
- 
+
   // History initialization 
   char historypath[4096];
   getcwd(historypath, sizeof(historypath));
@@ -60,15 +62,14 @@ int main(int argc, char *argv[]){
 
   while(1){
     // Reset the descriptors of stdin and stdout if they were redirected
+    // TODO: May need to remove 
     dup2(saved_stdin , 0);
     dup2(saved_stdout, 1);
     dup2(saved_stderr, 2);
 
-    printf("%s", prompt);
-     
     if (reenactingHistory == 0) {
-      // Breaks out the loop if fgets fails. 
-      if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
+      // Breaks out the loop if readLine fails. 
+      if(readLine(inputLine, COMMAND_LINE_SIZE, prompt) == -1) {
         fclose(historyfile);
         break;
       }      
@@ -76,6 +77,7 @@ int main(int argc, char *argv[]){
       reenactingHistory = 0; // allows the user to enter input in the next iteration
     }
 
+    // TODO: Remove maybe since readLine already does this 
     inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
     
     // Skip empty input lines
@@ -153,6 +155,93 @@ int main(int argc, char *argv[]){
     }
   }
   return 0;
+}
+
+// General Input line function to read each user input without pressing enter 
+// Required for arrow key functionality 
+int readLine(char *line, int size, char *prompt){ 
+  char ch; // User entered character 
+  int length = 0; // Number of characters in line 
+  int cursor = 0; // Cursor position 
+  struct termios oldToi; // Canonical terminal mode 
+  tcgetattr(0, &oldToi); 
+  struct termios raw = oldToi;
+
+  // Enter Raw mode 
+  raw.c_lflag &= ~(ECHO | ECHOE | ICANON); // Disable Canonical mode and Echoing 
+  tcsetattr(0, TCSANOW, &raw); // Set raw mode immediately 
+  
+  // Input will keep looping until newline is entered or error in read occurs  
+  while(read(0, &ch, 1) == 1){
+     printf("%s", prompt);
+
+    // For Normal Characters 
+    if(ch >= 32 && ch <= 126){
+      if(length < size - 1){
+        line[cursor] = ch; // Enter the character in the current cursor position  
+        cursor++;
+        length++; 
+        
+        line[length] = '\0'; // Length will not change position. Always keep as null terminator 
+        printf("%c", ch); 
+        fflush(stdout);
+        continue; 
+      }
+    }
+    
+    // For Backspace
+    if(ch == 127){
+      // Reduce length and memory if cursor is not at the start of string 
+      if(cursor > 0){
+        cursor--; 
+        length--; 
+
+        // memmove is used to copy block of memory from one place to another 
+        // We move the source (cursor - 1) to the destination/cursor location (cursor)
+        // &line[cursor] is where the ddata will be placed 
+        // &line[cursor+1] Where the data is copied from 
+        // length - cursor + 1 is the length of the memory block 
+        // We move the character after the current character to the position of the current character. 
+        memmove(&line[cursor], &line[cursor+1], length - cursor + 1);
+        printf("\b \b");
+        fflush(stdout);
+      }
+    }
+    
+    // For Enter 
+    if(ch == '\n'){
+      line[length] = '\0'; 
+      printf("\n"); 
+      tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
+      return length; 
+    }
+
+    // For arrow keys 
+    if(ch == '\033'){
+      char seq[2]; // Completed Escape sequence for arrow keys 
+      
+      // Read the next 2 bytes and only execute if the next 2 bytes are successfully read 
+      if(read(STDIN_FILENO, &seq[0], 1) == 1 && read(STDIN_FILENO, &seq[1], 1) == 1){
+        
+        // Switch Case statement for arrow keys 
+        if(seq[0] != '[') break; 
+        switch(seq[1]){
+          // Replay History 
+          case 'A': 
+            // TODO: Add a function to get the history by 1 line before but dont execute 
+            break; 
+          case 'B':
+            // TODO: Add a function to get the the next history. Exits with one line.
+            break; 
+          default:
+            break; 
+        }
+      }
+    } 
+  }
+
+  tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
+  return length; 
 }
 
 // Save History
