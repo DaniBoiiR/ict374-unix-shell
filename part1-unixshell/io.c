@@ -51,7 +51,7 @@ int readLine(char *line, int size, char *prompt){
   while((bytes = read(0, &ch, 1)) == 1){
     // For Normal Characters 
     if(ch >= 32 && ch <= 126){
-      if(length < size - 2){ // TODO: Maybe change to -1. -2 is for newline and null 
+      if(length < size - 1){ // TODO: Maybe change to -1. -2 is for newline and null 
         // Move memory first 
         memmove(&line[cursor+1], &line[cursor], length - cursor + 1);
         line[cursor] = ch; // Enter the character in the current cursor position  
@@ -69,7 +69,7 @@ int readLine(char *line, int size, char *prompt){
     }
     
     // For Backspace
-    if(ch == 127){
+    else if(ch == 127){
       // Reduce length and memory if cursor is not at the start of string 
       if(cursor > 0){
         cursor--;  
@@ -82,15 +82,19 @@ int readLine(char *line, int size, char *prompt){
         // length - cursor + 1 is the length of the memory block 
         // We move the character after the current character to the position of the current character. 
         memmove(&line[cursor], &line[cursor+1], length - cursor + 1);
+        line[length] = '\0';
         printf("\033[D"); // Move cursor left 
         printf("%s", &line[cursor]); // Redraw remaining line 
-        printf("\033[K"); // Clear line 
+        printf("\033[K"); // Clear line
+        
+        // Reprint Cursor 
+        for(int i=cursor;i<length;i++) printf("\033[D");
         fflush(stdout); 
       }
     }
     
     // For Enter 
-    if(ch == '\n'){
+    else if(ch == '\n'){
       line[length] = '\0'; 
       printf("\n"); 
       tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
@@ -118,12 +122,14 @@ int readLine(char *line, int size, char *prompt){
               if(cursor < length){
                 cursor++; 
                 printf("\033[C");
+                fflush(stdout); 
               }
               break; 
             case 'D':
               if(cursor > 0){
                 cursor--; 
-                printf("\033[D");
+                printf("\033[D");   
+                fflush(stdout); 
               }
               break; 
             default:
@@ -134,11 +140,10 @@ int readLine(char *line, int size, char *prompt){
     } 
   }
 
+  tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
   if(bytes == 0 ){
-    tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
     return -1;
   }
 
-  tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
   return length; 
 }

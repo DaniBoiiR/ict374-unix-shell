@@ -76,7 +76,7 @@ void buildCommandArgumentArray(char *token[], Command *cp){
   int n = (cp->last - cp->first) + 1; // NUm of tokens in command. 
   
   // Reallocate memory for argument vector
-  cp->argv = (char **) realloc(cp->argv, sizeof(char *) * n);
+  cp->argv = (char **) realloc(cp->argv, sizeof(char *) * (n + 1));
   if(cp->argv == NULL){
     perror("realloc");
     exit(1);

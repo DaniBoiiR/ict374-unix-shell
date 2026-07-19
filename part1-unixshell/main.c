@@ -37,7 +37,6 @@ int main(int argc, char *argv[]){
   int reenactingHistory = 0;
 
   while(1){
-    printf("%s", prompt);
     // Reset the descriptors of stdin and stdout if they were redirected
     // TODO: May need to remove 
     dup2(saved_stdin , 0);
@@ -46,8 +45,8 @@ int main(int argc, char *argv[]){
 
     if (reenactingHistory == 0) {
       // Breaks out the loop if readLine fails. TODO: Uncomment once bug is fixed
-      // if(readLine(inputLine, COMMAND_LINE_SIZE, prompt) == -1) {
-      if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
+      if(readLine(inputLine, COMMAND_LINE_SIZE, prompt) == -1) {
+      //if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
         fclose(historyfile);
         break;
       }      
@@ -56,7 +55,7 @@ int main(int argc, char *argv[]){
     }
 
     // TODO: Remove maybe since readLine already does this 
-    inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
+    // inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
     
     // Skip empty input lines
     if(strlen(inputLine) == 0){
@@ -125,6 +124,10 @@ int main(int argc, char *argv[]){
       }
     }
   }
+  close(saved_stdin);
+  close(saved_stdin);
+  close(saved_stderr);
+
   return 0;
 }
 
