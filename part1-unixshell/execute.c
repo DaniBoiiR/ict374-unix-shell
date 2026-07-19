@@ -8,7 +8,11 @@ void executeCommand(Command *command){
   }
 
   if (command->stdout_file != NULL) {
-    redirectstdout(command->stdout_file);
+    redirectstdout(command->stdout_file, command->stdout_mode);
+  }
+
+  if (command->stderr_file != NULL) {
+    redirectstderr(command->stderr_file, command->stderr_mode);
   }
 
   int pid = fork(); // All external commands will be handled by child processes 
@@ -42,7 +46,12 @@ void runProgram(Command *command){
 
   // Output Redirection
   if (command->stdout_file != NULL) {
-    redirectstdout(command->stdout_file);
+    redirectstdout(command->stdout_file, command->stdout_mode);
+  }
+
+  // Error Redirection
+  if (command->stderr_file != NULL) {
+    redirectstderr(command->stderr_file, command->stderr_mode);
   }
 
   execvp(command->argv[0], command->argv); // Run command in child process 
@@ -131,16 +140,18 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   }
 
   if (command->stdout_file != NULL) {
-    redirectstdout(command->stdout_file);
+    redirectstdout(command->stdout_file, command->stdout_mode);
+  }
+
+  if (command->stderr_file != NULL) {
+    redirectstderr(command->stderr_file, command->stderr_mode);
   }
 
   // Exits the program after exit is input. 
   if (strcmp(cmd, "exit") == 0) {
-    //dup2(saved_stdin , 0);
-    //dup2(saved_stdout, 1);
     printf("Exiting shell...\n");
     fclose(historyfile);
-    exit(0); // bug: crashes if stdin and stdout are not set to their default values
+    exit(0);
   }
 
   // Return 1 If commands are Built in 
@@ -160,7 +171,7 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   } 
 
   if (strcmp(cmd, "prompt") == 0) {
-    change_prompt(prompt, command->argv[1]);
+    change_prompt(prompt, command->argv, command->last);
     return 1; 
   }
 

@@ -9,6 +9,6 @@ void cd(const char * path);
 
 void walk(const char * path);
 
-void change_prompt(char* prompt, const char* newPrompt);
+void change_prompt(char* prompt, char** argv, int last);
 
 

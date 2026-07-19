@@ -1,35 +1,40 @@
 #include "io.h"
+#include "history.h"
 
-void redirectstdin(char* stdin_file) {
+void redirectstdin(const char* stdin_file) {
   if ((access(stdin_file, F_OK) == -1)) {
     return; // File does not exist
   }
-  int stdin_desc = open(stdin_file, O_RDONLY);
+  int stdin_desc;
+  stdin_desc = open(stdin_file, O_RDONLY);
   dup2(stdin_desc, STDIN_FILENO);
 }
 
-void redirectstdout(char* stdout_file) {
-  if ((access(stdout_file, F_OK) == -1)) {
-    FILE* newFile = fopen(stdout_file, "w");
-    fclose(newFile); // Open and close to create a new file if it does not exist
+void redirectstdout(const char* stdout_file, char mode) {
+  int stdout_desc;
+  if (mode == 'w') {
+    stdout_desc = open(stdout_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
   }
-  int stdout_desc = open(stdout_file, O_WRONLY | O_APPEND);
+  if (mode == 'a') {
+    stdout_desc = open(stdout_file, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
+  } 
   dup2(stdout_desc, STDOUT_FILENO);
 }
 
-// TODO: How and where can we use this function?
-void redirectstderr(char* stderr_file) {
-  if ((access(stderr_file, F_OK) == -1)) {
-    FILE* newFile = fopen(stderr_file, "w");
-    fclose(newFile); // Open and close to create a new file if it does not exist
+void redirectstderr(const char* stderr_file, char mode) {
+  int stderr_desc;
+  if (mode == 'w') {
+    stderr_desc = open(stderr_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
   }
-  int stderr_desc = open(stderr_file, O_WRONLY | O_APPEND);
+  if (mode == 'a') {
+    stderr_desc = open(stderr_file, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
+  } 
   dup2(stderr_desc, STDERR_FILENO);
 }
 
 // General Input line function to read each user input without pressing enter 
 // Required for arrow key functionality 
-int readLine(char *line, int size, char *prompt){ 
+int readLine(char *line, int size, char *prompt, FILE* historyfile){ 
   int bytes; // Num of bytes read 
   line[0] = '\0';
   char ch; // User entered character 
@@ -38,6 +43,13 @@ int readLine(char *line, int size, char *prompt){
   struct termios oldToi; // Canonical terminal mode 
   tcgetattr(0, &oldToi); 
   struct termios raw = oldToi;
+
+  char lineOfHistory[COMMAND_LINE_SIZE]; // Buffer for storing a line from the history file
+  int numberOfLinesOfHistory; // The total number of lines of history there are.
+  int lineOfHistoryNumber; // The number of the line that is currently being worked with
+  numberOfLinesOfHistory = getLineOfHistory(historyfile, -1, lineOfHistory); // Count lines by iterating
+  lineOfHistoryNumber = numberOfLinesOfHistory + 1; // Initialize as one more than the number of lines of history
+    // When the up arrow is pressed, it gets decremented
 
   // Enter Raw mode 
   raw.c_lflag &= ~(ECHO | ECHOE | ICANON); // Disable Canonical mode and Echoing 
@@ -110,13 +122,35 @@ int readLine(char *line, int size, char *prompt){
         
         // Switch Case statement for arrow keys 
         if(seq[0] == '['){ 
+          
           switch(seq[1]){
             // Replay History 
             case 'A': 
               // TODO: Add a function to get the history by 1 line before but dont execute 
+              cursor = 0;
+              length = 0;
+              if (lineOfHistoryNumber > 1) {
+                lineOfHistoryNumber--; // Move up by one line in the history file
+                getLineOfHistory(historyfile, lineOfHistoryNumber, lineOfHistory);
+
+                memmove(&line[cursor], &lineOfHistory[0], strlen(lineOfHistory));
+                lineOfHistory[strlen(lineOfHistory)] = '\0'; // Replace \n with null
+                line[length] = '\0';
+                printf("%s", lineOfHistory);
+                fflush(stdout);
+              }
               break; 
             case 'B':
               // TODO: Add a function to get the the next history. Exits with one line.
+              if (lineOfHistoryNumber < numberOfLinesOfHistory - 1) {
+                lineOfHistoryNumber++; // Move down by one line in the history file
+                getLineOfHistory(historyfile, lineOfHistoryNumber, lineOfHistory);
+
+                memmove(&line[0], &lineOfHistory[0], strlen(lineOfHistory));
+                strcpy(line, lineOfHistory);
+                printf("%s", lineOfHistory);
+                fflush(stdout);
+              }
               break; 
             case 'C':
               if(cursor < length){

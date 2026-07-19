@@ -21,6 +21,9 @@ struct CommandStruct{
   char **argv;      // Array of tokens that form a command 
   char *stdin_file; // if not NULL, points to the file name for stdin file redirection  
   char *stdout_file;// if not NULL, points to the file name for stdout file redirection. 
+  char *stderr_file;// if not NULL, points to the file name for stderr file redirection. 
+  char stdout_mode; // the mode for stdout file redirection
+  char stderr_mode; // the mode for stderr file redirection
 };
 
 typedef struct CommandStruct Command;  // command type

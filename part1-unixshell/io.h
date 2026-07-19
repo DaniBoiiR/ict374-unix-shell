@@ -7,10 +7,10 @@
 #include <termios.h>
 #include <string.h>
 
-void redirectstdin (char* stdin_file);
+void redirectstdin (const char* stdin_file);
 
-void redirectstdout(char* stdout_file);
+void redirectstdout(const char* stdout_file, char mode);
 
-void redirectstderr(char* stderr_file);
+void redirectstderr(const char* stderr_file, char mode);
 
-int readLine(char *line, int size, char *prompt);
+int readLine(char *line, int size, char *prompt, FILE* historyfile);

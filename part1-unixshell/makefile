@@ -29,3 +29,4 @@ execute.o: execute.c execute.h
 
 clean: 
 	rm *.o 
+	rm .shell_history

@@ -39,6 +39,9 @@ void initializeCommandStructure(Command *cp){
   cp->argv = NULL;
   cp->stdin_file = NULL;
   cp->stdout_file = NULL; 
+  cp->stderr_file = NULL; 
+  cp->stdout_mode = '\0'; 
+  cp->stderr_mode = '\0'; 
 }
 
 // Filles the command struct with command details 
@@ -62,9 +65,28 @@ void searchRedirection(char *token[], Command *cp){
       cp->stdin_file = token[index + 1];
     }
 
-    // FInd output redirect 
+    // Find output (write) redirect 
     if((strcmp(token[index], ">")) == 0){
       cp->stdout_file = token[index + 1];
+      cp->stdout_mode = 'w';
+    }
+
+    // Find error (write) redirect 
+    if((strcmp(token[index], "2>")) == 0){
+      cp->stderr_file = token[index + 1];
+      cp->stderr_mode = 'w';
+    }
+
+    // Find output (append) redirect 
+    if((strcmp(token[index], ">>")) == 0){
+      cp->stdout_file = token[index + 1];
+      cp->stdout_mode = 'a';
+    }
+
+    // Find error (append) redirect 
+    if((strcmp(token[index], "2>>")) == 0){
+      cp->stderr_file = token[index + 1];
+      cp->stderr_mode = 'a';
     }
   }
 
@@ -87,7 +109,7 @@ void buildCommandArgumentArray(char *token[], Command *cp){
   int k = 0; // Output index for inserting into argv array 
   
   for(int i = cp->first; i <= cp->last; i++){
-    if(strcmp(token[i], ">") == 0 || strcmp(token[i], "<") == 0){
+    if(strcmp(token[i], ">") == 0 || strcmp(token[i], "<") == 0 || strcmp(token[i], ">>") == 0 || strcmp(token[i], "2>") == 0 || strcmp(token[i], "2>>") == 0){
       ++i; // Skips the input/output redirection 
     } else{ 
       cp->argv[k] = token[i]; // Insert current element to argv command array 

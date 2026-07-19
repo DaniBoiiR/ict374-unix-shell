@@ -31,9 +31,13 @@ void walk(const char * path) {
   return;
 }
 
-// BUG: Prompts with spaces are not processed properly
-void change_prompt(char* prompt, const char* newPrompt) {
-  strcpy(prompt, newPrompt);
+void change_prompt(char* prompt, char** argv, int last) {
+  char newPromptBuffer[256];
+  for (int i = 1; i <= last; i++) {
+    strcat(newPromptBuffer, argv[i]);
+    strcat(newPromptBuffer, " ");
+  }
+  strcpy(prompt, newPromptBuffer);
   return;
 }
 

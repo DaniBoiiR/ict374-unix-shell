@@ -9,8 +9,8 @@ void history(FILE *historyfile);
 
 FILE *initializeHistory();
 
-void saveHistory(char *inputLine, FILE *historyfile);
+void saveHistory(const char *inputLine, FILE *historyfile);
 
-void getLineOfHistory(FILE* historyfile, int lineNumberToGet, char* lineToReturnTo);
+int getLineOfHistory(FILE* historyfile, int lineNumberToGet, char* lineToReturnTo);
 
 void getLineOfHistoryByString(FILE* historyfile, const char* substringToSearchFor, char* lineToReturnTo);

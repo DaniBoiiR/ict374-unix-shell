@@ -5,8 +5,9 @@
 */
 
 #include <stdio.h>
+#include <errno.h>
 #include "token.h"
-#include "command.h"
+//#include "command.h"
 #include "builtin.h"
 #include "history.h"
 #include "signal.h"
@@ -22,8 +23,9 @@ int main(int argc, char *argv[]){
   char expandedStorage[MAX_NUM_TOKENS][COMMAND_LINE_SIZE];
   char *expandedTokens[MAX_NUM_TOKENS]; // After glob() for wildcard implementation
   Command command[MAX_NUM_COMMANDS];
-  char prompt[256] = "$ ";
+  char prompt[256] = "% ";
   int debugMode = 0; 
+  int again = 1; // For slow system call handling
   //TODO: Replace these with a struct
   int saved_stdin  = dup(0); // For reverting to after redirecting
   int saved_stdout = dup(1); // For reverting to after redirecting
@@ -43,30 +45,37 @@ int main(int argc, char *argv[]){
     dup2(saved_stdin , 0);
     dup2(saved_stdout, 1);
     dup2(saved_stderr, 2);
-
+    
+    again = 1;
     if (reenactingHistory == 0) {
-      // Breaks out the loop if readLine fails. TODO: Uncomment once bug is fixed
-      if(readLine(inputLine, COMMAND_LINE_SIZE, prompt) == -1) {
-      //if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
-        fclose(historyfile);
-        break;
-      }      
+      // Breaks out the loop if readLine fails.
+      while (again) {//
+        again = 0;//
+        if(readLine(inputLine, COMMAND_LINE_SIZE, prompt, historyfile) == -1) {
+          //if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
+          fclose(historyfile);
+          break;
+        }    
+        if (inputLine == NULL) {//
+          if (errno = EINTR) {//
+            again = 1;//
+          }//
+        }//
+      }//
+        
     } else if (reenactingHistory == 1) {
       reenactingHistory = 0; // allows the user to enter input in the next iteration
     }
 
-    // TODO: Remove maybe since readLine already does this 
-    // inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
+    // Don't remove this because otherwise, using ! to repeat history leaves unwanted new lines
+    inputLine[strcspn(inputLine, "\n")] = '\0'; // Pattern for removing saved newline
     
     // Skip empty input lines
     if(strlen(inputLine) == 0){
       continue;
     }
     
-    // If the command is not related to history or exiting, save it to history
-    if(strncmp(inputLine, "!", 1) != 0 && strlen(inputLine) > 0 && strncmp(inputLine, "exit", 4) != 0 && strncmp(inputLine, "history", 7) != 0){
-      saveHistory(inputLine, historyfile);
-    }
+    saveHistory(inputLine, historyfile);
 
     int tokenSize = tokenize(inputLine, token);
     int expandedTokensSize = expandWildCard(token, expandedTokens, expandedStorage, tokenSize);
@@ -158,4 +167,5 @@ void printCommand(Command* command, char** expandedTokens, int n) {
   printf("Separator: %s\n", command[n].sep);
   printf("Stdin file: %s\n", command[n].stdin_file);
   printf("Stdout file: %s\n", command[n].stdout_file);
+  printf("Stderr file: %s\n", command[n].stderr_file);
 }
