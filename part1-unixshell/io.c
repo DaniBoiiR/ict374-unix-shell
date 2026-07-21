@@ -126,29 +126,50 @@ int readLine(char *line, int size, char *prompt, FILE* historyfile){
           switch(seq[1]){
             // Replay History 
             case 'A': 
-              // TODO: Add a function to get the history by 1 line before but dont execute 
-              cursor = 0;
-              length = 0;
               if (lineOfHistoryNumber > 1) {
+                cursor = 0;
+                length = 0;
+              
+                // Remove current command 
+                // BUG: First command in history file not able to be executed 
+                printf("\r");
+                printf("\033[K");
+                
                 lineOfHistoryNumber--; // Move up by one line in the history file
                 getLineOfHistory(historyfile, lineOfHistoryNumber, lineOfHistory);
 
-                memmove(&line[cursor], &lineOfHistory[0], strlen(lineOfHistory));
-                lineOfHistory[strlen(lineOfHistory)] = '\0'; // Replace \n with null
-                line[length] = '\0';
-                printf("%s", lineOfHistory);
+                lineOfHistory[strlen(lineOfHistory) - 1] = '\0'; // Replace \n with null
+                strcpy(line, lineOfHistory);
+                length = strlen(line); // Set cursor and length to end of line 
+                cursor = length; 
+                printf("%s%s", prompt, lineOfHistory);
                 fflush(stdout);
-              }
+              } 
               break; 
             case 'B':
-              // TODO: Add a function to get the the next history. Exits with one line.
-              if (lineOfHistoryNumber < numberOfLinesOfHistory - 1) {
+              cursor = 0; length = 0; 
+              printf("\r");
+              printf("\033[K"); 
+
+              if (lineOfHistoryNumber < numberOfLinesOfHistory) {
                 lineOfHistoryNumber++; // Move down by one line in the history file
                 getLineOfHistory(historyfile, lineOfHistoryNumber, lineOfHistory);
 
-                memmove(&line[0], &lineOfHistory[0], strlen(lineOfHistory));
+                lineOfHistory[strlen(lineOfHistory) - 1] = '\0'; // Replace \n with null
                 strcpy(line, lineOfHistory);
-                printf("%s", lineOfHistory);
+                length = strlen(line); // Set cursor and length to end of line 
+                cursor = length;
+                printf("%s%s", prompt, lineOfHistory);
+                fflush(stdout);
+              } 
+              
+              // Bottom of history resets to empty line 
+              else{ 
+                lineOfHistoryNumber = numberOfLinesOfHistory + 1; 
+                line[0]= '\0';
+                length = 0; 
+                cursor = 0; 
+                printf("%s", prompt); 
                 fflush(stdout);
               }
               break; 
