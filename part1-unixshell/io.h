@@ -1,3 +1,6 @@
+#ifndef IO_H
+#define IO_H
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +16,7 @@ typedef struct {
   int cursor; // Position of the cursor in the line.
   int size; // Command line size 
 
+  FILE *historyfile; // File storing history of previously executed commands 
   int historyCount; // Current index of history in history file 
   int historyTotal; // Total number of history file lines   
   
@@ -27,3 +31,5 @@ void redirectstdout(const char* stdout_file, char mode);
 void redirectstderr(const char* stderr_file, char mode);
 
 int readLine(char *line, int size, char *prompt, FILE* historyfile);
+
+#endif

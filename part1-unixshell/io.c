@@ -33,21 +33,21 @@ void redirectstderr(const char* stderr_file, char mode) {
 }
 
 // Intialize the Buffer struct to be passed to all functions. 
-void initializeLineBuffer(LineBuffer *buffer, char *line, int size, int historyCount,int historyTotal, char *prompt){
-  lineBuffer->line = line; 
-  lineBuffer->length = 0; 
-  lineBuffer->cursor = 0; 
-  lineBuffer->size = size; 
-  lineBuffer->historyCount = historyCount; 
-  lineBuffer->historyTotal = historyTotal; 
-  lineBuffer->prompt = prompt; 
+void initializeLineBuffer(LineBuffer *buffer, char *line, int size, int historyCount, int historyTotal, char *prompt, FILE *historyfile){
+  buffer->line = line; 
+  buffer->length = 0; 
+  buffer->cursor = 0; 
+  buffer->size = size; 
+  buffer->historyfile = historyfile; 
+  buffer->historyCount = historyCount; 
+  buffer->historyTotal = historyTotal; 
+  buffer->prompt = prompt; 
 }
 
 // Raw mode use for inpput handling 
-void setupRawMode(){
-  struct termios oldToi; // Canonical terminal mode 
-  tcgetattr(0, &oldToi); 
-  struct termios raw = oldToi;
+void setupRawMode(struct termios *oldToi){
+  tcgetattr(0, oldToi); 
+  struct termios raw = *oldToi;
 
   // Enter Raw mode 
   raw.c_lflag &= ~(ECHO | ECHOE | ICANON); // Disable Canonical mode and Echoing 
@@ -55,40 +55,177 @@ void setupRawMode(){
   return;
 }
 
+// Clears current line 
+void clearLine(){
+  // Remove current command 
+  printf("\r");
+  printf("\033[K");
+}
+
+// Redraws line
+void redrawLine(LineBuffer *buffer){
+  int length = strlen(buffer->line);
+
+  // Only replace with null terminator if newline is found 
+  if(length > 0 && buffer->line[length - 1] == '\n'){ 
+    buffer->line[strlen(buffer->line) - 1] = '\0'; // Replace \n with null
+  }
+
+  buffer->length = strlen(buffer->line); // Set cursor and length to end of line 
+  buffer->cursor = buffer->length; 
+  printf("%s%s", buffer->prompt, buffer->line);
+  fflush(stdout);
+}
+
 // Handle Normal character Inputs 
-void handleChar(LineBuffer *buffer ){
-  if(length < buffer->size - 1){ // TODO: Maybe change to -1. -2 is for newline and null 
+void handleChar(LineBuffer *buffer, char ch){
+  if(buffer->length < buffer->size - 1){
     // Move memory first 
-    memmove(&line[cursor+1], &line[cursor], length - cursor + 1);
-    line[cursor] = ch; // Enter the character in the current cursor position  
-    cursor++;
-    length++; 
+    memmove(&buffer->line[buffer->cursor+1], &buffer->line[buffer->cursor], buffer->length - buffer->cursor + 1);
+    buffer->line[buffer->cursor] = ch; // Enter the character in the current cursor position  
+    buffer->cursor++;
+    buffer->length++; 
     
-    line[length] = '\0'; // Length will not change position. Always keep as null terminator 
-    printf("%s", &line[cursor-1]); // Print string up until currently inserted character 
-    for(int n = cursor; n < length; n++){
+    buffer->line[buffer->length] = '\0'; // Length will not change position. Always keep as null terminator 
+    printf("%s", &buffer->line[buffer->cursor-1]); // Print string up until currently inserted character 
+    for(int n = buffer->cursor; n < buffer->length; n++){
       printf("\033[D"); // Print cursor 
     }
     
     fflush(stdout);
   }
+
+  return; 
+}
+
+// Handle Backspace. Deletes char from line 
+void handleBackspace(LineBuffer *buffer){
+  // Reduce length and memory if cursor is not at the start of string 
+  if(buffer->cursor > 0){
+    buffer->cursor--;  
+    buffer->length--;
+
+    // memmove is used to copy block of memory from one place to another 
+    // We move the source (cursor - 1) to the destination/cursor location (cursor)
+    // &line[cursor] is where the ddata will be placed 
+    // &line[cursor+1] Where the data is copied from 
+    // length - cursor + 1 is the length of the memory block 
+    // We move the character after the current character to the position of the current character. 
+    memmove(&buffer->line[buffer->cursor], &buffer->line[buffer->cursor+1], buffer->length - buffer->cursor + 1);
+    buffer->line[buffer->length] = '\0';
+    printf("\033[D"); // Move cursor left 
+    printf("%s", &buffer->line[buffer->cursor]); // Redraw remaining line 
+    printf("\033[K"); // Clear line
+    
+    // Reprint Cursor 
+    for(int i= buffer->cursor; i < buffer->length; i++) printf("\033[D");
+    fflush(stdout); 
+  }
+
+  return; 
+}
+
+// Replays History when Arrow Key Up is pressed 
+void loadPreviousHistory(LineBuffer *buffer){
+  if (buffer->historyCount > 1) {
+    buffer->cursor = 0;
+    buffer->length = 0;
+    
+    buffer->historyCount--; // Move up by one line in the history file
+    getLineOfHistory(buffer->historyfile, buffer->historyCount, buffer->line);
+    clearLine();
+    redrawLine(buffer);
+  } 
+
+  return; 
+}
+
+// Loads next command in history when Arrow Key Down is pressed 
+void loadNextHistory(LineBuffer *buffer){
+  clearLine();
+
+  if (buffer->historyCount < buffer->historyTotal) {
+    buffer->historyCount++; // Move down by one line in the history file
+    getLineOfHistory(buffer->historyfile, buffer->historyCount, buffer->line);
+    clearLine();
+    redrawLine(buffer);
+  } 
+  
+  // Bottom of history resets to empty line 
+  else{ 
+    buffer->historyCount = buffer->historyTotal + 1; 
+    buffer->line[0]= '\0';
+    buffer->length = 0; 
+    buffer->cursor = 0; 
+    printf("%s", buffer->prompt); 
+    fflush(stdout);
+  }
+  
+  return; 
+}
+
+// Arrow Key controller which redirects depending on the arrow key press 
+void handleArrowKey(LineBuffer *buffer){
+  char seq[2]; // Completed Escape sequence for arrow keys 
+  
+  // Read the next 2 bytes and only execute if the next 2 bytes are successfully read 
+  if(read(STDIN_FILENO, &seq[0], 1) == 1 && read(STDIN_FILENO, &seq[1], 1) == 1){
+    
+    // Switch Case statement for arrow keys 
+    if(seq[0] == '['){ 
+      
+      switch(seq[1]){
+        // Load previous history in history file (Arrow Key Up) 
+        case 'A': 
+          loadPreviousHistory(buffer);
+          break; 
+        
+        // Load Next history in history file (Arrow Key Down)
+        case 'B':
+          loadNextHistory(buffer); 
+          break; 
+
+        // Move Cursor right 
+        case 'C':
+          if(buffer->cursor < buffer->length){
+            buffer->cursor++; 
+            printf("\033[C");
+            fflush(stdout); 
+          }
+          break; 
+
+        // Move Cursor left
+        case 'D':
+          if(buffer->cursor > 0){
+            buffer->cursor--; 
+            printf("\033[D");   
+            fflush(stdout); 
+          }
+          break; 
+        default:
+          break; 
+      }
+    }
+  }
+  return;  
 }
 
 // General Input line function to read each user input without pressing enter 
 // Required for arrow key functionality 
 int readLine(char *line, int size, char *prompt, FILE* historyfile){ 
   int bytes; // Num of bytes read 
+  struct termios oldToi; // Canonical terminal mode 
   
   // Initialize Buffer struct 
-  struct LineBuffer buffer; 
+  LineBuffer buffer; 
   line[0] = '\0';
   char lineOfHistory[COMMAND_LINE_SIZE]; // Buffer for storing a line from the history file
   int numberOfLinesOfHistory = getLineOfHistory(historyfile, -1, lineOfHistory); // Total History 
   int lineOfHistoryNumber = numberOfLinesOfHistory + 1; // History Count. Decrements/Increments when arrow key pressed 
-  initializeLineBuffer(&buffer, line, size, lineOfHistoryNumber, numberOfLinesOfHistory, prompt);
+  initializeLineBuffer(&buffer, line, size, lineOfHistoryNumber, numberOfLinesOfHistory, prompt, historyfile);
 
   char ch; // User entered character 
-  setupRawMode(); 
+  setupRawMode(&oldToi); 
 
   printf("%s", prompt); // Print prompt first before characters 
   fflush(stdout); // Flush output buffer 
@@ -98,136 +235,27 @@ int readLine(char *line, int size, char *prompt, FILE* historyfile){
   while((bytes = read(0, &ch, 1)) == 1){
     // For Normal Characters 
     if(ch >= 32 && ch <= 126){
-      if(length < size - 1){ // TODO: Maybe change to -1. -2 is for newline and null 
-        // Move memory first 
-        memmove(&line[cursor+1], &line[cursor], length - cursor + 1);
-        line[cursor] = ch; // Enter the character in the current cursor position  
-        cursor++;
-        length++; 
-        
-        line[length] = '\0'; // Length will not change position. Always keep as null terminator 
-        printf("%s", &line[cursor-1]); // Print string up until currently inserted character 
-        for(int n = cursor; n < length; n++){
-          printf("\033[D"); // Print cursor 
-        }
-        
-        fflush(stdout);
-      }
+      handleChar(&buffer, ch); 
     }
     
     // For Backspace
     else if(ch == 127){
-      // Reduce length and memory if cursor is not at the start of string 
-      if(cursor > 0){
-        cursor--;  
-        length--; 
-
-        // memmove is used to copy block of memory from one place to another 
-        // We move the source (cursor - 1) to the destination/cursor location (cursor)
-        // &line[cursor] is where the ddata will be placed 
-        // &line[cursor+1] Where the data is copied from 
-        // length - cursor + 1 is the length of the memory block 
-        // We move the character after the current character to the position of the current character. 
-        memmove(&line[cursor], &line[cursor+1], length - cursor + 1);
-        line[length] = '\0';
-        printf("\033[D"); // Move cursor left 
-        printf("%s", &line[cursor]); // Redraw remaining line 
-        printf("\033[K"); // Clear line
-        
-        // Reprint Cursor 
-        for(int i=cursor;i<length;i++) printf("\033[D");
-        fflush(stdout); 
-      }
+      handleBackspace(&buffer);
     }
     
     // For Enter 
+    // TODO: CHANGE THIS TO BREAK, MAKE A RETURNTOTERMINAL FUNCTION 
     else if(ch == '\n'){
-      line[length] = '\0'; 
+      buffer.line[buffer.length] = '\0'; 
       printf("\n"); 
       tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
-      return length; 
+      return buffer.length; 
     }
 
     // For arrow keys 
     if(ch == '\033'){
-      char seq[2]; // Completed Escape sequence for arrow keys 
-      
-      // Read the next 2 bytes and only execute if the next 2 bytes are successfully read 
-      if(read(STDIN_FILENO, &seq[0], 1) == 1 && read(STDIN_FILENO, &seq[1], 1) == 1){
-        
-        // Switch Case statement for arrow keys 
-        if(seq[0] == '['){ 
-          
-          switch(seq[1]){
-            // Replay History 
-            case 'A': 
-              if (lineOfHistoryNumber > 1) {
-                cursor = 0;
-                length = 0;
-              
-                // Remove current command 
-                // BUG: First command in history file not able to be executed 
-                printf("\r");
-                printf("\033[K");
-                
-                lineOfHistoryNumber--; // Move up by one line in the history file
-                getLineOfHistory(historyfile, lineOfHistoryNumber, lineOfHistory);
-
-                lineOfHistory[strlen(lineOfHistory) - 1] = '\0'; // Replace \n with null
-                strcpy(line, lineOfHistory);
-                length = strlen(line); // Set cursor and length to end of line 
-                cursor = length; 
-                printf("%s%s", prompt, lineOfHistory);
-                fflush(stdout);
-              } 
-              break; 
-            case 'B':
-              cursor = 0; length = 0; 
-              printf("\r");
-              printf("\033[K"); 
-
-              if (lineOfHistoryNumber < numberOfLinesOfHistory) {
-                lineOfHistoryNumber++; // Move down by one line in the history file
-                getLineOfHistory(historyfile, lineOfHistoryNumber, lineOfHistory);
-
-                lineOfHistory[strlen(lineOfHistory) - 1] = '\0'; // Replace \n with null
-                strcpy(line, lineOfHistory);
-                length = strlen(line); // Set cursor and length to end of line 
-                cursor = length;
-                printf("%s%s", prompt, lineOfHistory);
-                fflush(stdout);
-              } 
-              
-              // Bottom of history resets to empty line 
-              else{ 
-                lineOfHistoryNumber = numberOfLinesOfHistory + 1; 
-                line[0]= '\0';
-                length = 0; 
-                cursor = 0; 
-                printf("%s", prompt); 
-                fflush(stdout);
-              }
-              break; 
-            case 'C':
-              if(cursor < length){
-                cursor++; 
-                printf("\033[C");
-                fflush(stdout); 
-              }
-              break; 
-            case 'D':
-              if(cursor > 0){
-                cursor--; 
-                printf("\033[D");   
-                fflush(stdout); 
-              }
-              break; 
-            default:
-              break; 
-          }
-        }
-      }
-    } 
+      handleArrowKey(&buffer);   
+    }
   }
 
   tcsetattr(0, TCSANOW, &oldToi); // Revert back to canonical mode 
@@ -235,5 +263,5 @@ int readLine(char *line, int size, char *prompt, FILE* historyfile){
     return -1;
   }
 
-  return length; 
+  return buffer.length; 
 }
