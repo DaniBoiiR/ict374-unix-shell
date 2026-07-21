@@ -7,6 +7,20 @@
 #include <termios.h>
 #include <string.h>
 
+typedef struct {
+  char *line; // The Line entered by the user, new characters are added to line and displayed ot user 
+  int length; // The total length of the entered line. Updates with character insertion/deletion  
+  int cursor; // Position of the cursor in the line.
+  int size; // Command line size 
+
+  FILE *historyfile; // File containing command history. 
+  int lineOfHistoryNumber; // Current index of history in history file 
+  int historyCount; // Total number of history file lines   
+  
+  char *prompt; // Line prompt 
+
+} LineBuffer; 
+
 void redirectstdin (const char* stdin_file);
 
 void redirectstdout(const char* stdout_file, char mode);
