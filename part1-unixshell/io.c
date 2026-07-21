@@ -32,29 +32,64 @@ void redirectstderr(const char* stderr_file, char mode) {
   dup2(stderr_desc, STDERR_FILENO);
 }
 
-// General Input line function to read each user input without pressing enter 
-// Required for arrow key functionality 
-int readLine(char *line, int size, char *prompt, FILE* historyfile){ 
-  int bytes; // Num of bytes read 
-  line[0] = '\0';
-  char ch; // User entered character 
-  int length = 0; // Number of characters in line 
-  int cursor = 0; // Cursor position 
+// Intialize the Buffer struct to be passed to all functions. 
+void initializeLineBuffer(LineBuffer *buffer, char *line, int size, int historyCount,int historyTotal, char *prompt){
+  lineBuffer->line = line; 
+  lineBuffer->length = 0; 
+  lineBuffer->cursor = 0; 
+  lineBuffer->size = size; 
+  lineBuffer->historyCount = historyCount; 
+  lineBuffer->historyTotal = historyTotal; 
+  lineBuffer->prompt = prompt; 
+}
+
+// Raw mode use for inpput handling 
+void setupRawMode(){
   struct termios oldToi; // Canonical terminal mode 
   tcgetattr(0, &oldToi); 
   struct termios raw = oldToi;
 
-  char lineOfHistory[COMMAND_LINE_SIZE]; // Buffer for storing a line from the history file
-  int numberOfLinesOfHistory; // The total number of lines of history there are.
-  int lineOfHistoryNumber; // The number of the line that is currently being worked with
-  numberOfLinesOfHistory = getLineOfHistory(historyfile, -1, lineOfHistory); // Count lines by iterating
-  lineOfHistoryNumber = numberOfLinesOfHistory + 1; // Initialize as one more than the number of lines of history
-    // When the up arrow is pressed, it gets decremented
-
   // Enter Raw mode 
   raw.c_lflag &= ~(ECHO | ECHOE | ICANON); // Disable Canonical mode and Echoing 
   tcsetattr(0, TCSANOW, &raw); // Set raw mode immediately 
+  return;
+}
+
+// Handle Normal character Inputs 
+void handleChar(LineBuffer *buffer ){
+  if(length < buffer->size - 1){ // TODO: Maybe change to -1. -2 is for newline and null 
+    // Move memory first 
+    memmove(&line[cursor+1], &line[cursor], length - cursor + 1);
+    line[cursor] = ch; // Enter the character in the current cursor position  
+    cursor++;
+    length++; 
+    
+    line[length] = '\0'; // Length will not change position. Always keep as null terminator 
+    printf("%s", &line[cursor-1]); // Print string up until currently inserted character 
+    for(int n = cursor; n < length; n++){
+      printf("\033[D"); // Print cursor 
+    }
+    
+    fflush(stdout);
+  }
+}
+
+// General Input line function to read each user input without pressing enter 
+// Required for arrow key functionality 
+int readLine(char *line, int size, char *prompt, FILE* historyfile){ 
+  int bytes; // Num of bytes read 
   
+  // Initialize Buffer struct 
+  struct LineBuffer buffer; 
+  line[0] = '\0';
+  char lineOfHistory[COMMAND_LINE_SIZE]; // Buffer for storing a line from the history file
+  int numberOfLinesOfHistory = getLineOfHistory(historyfile, -1, lineOfHistory); // Total History 
+  int lineOfHistoryNumber = numberOfLinesOfHistory + 1; // History Count. Decrements/Increments when arrow key pressed 
+  initializeLineBuffer(&buffer, line, size, lineOfHistoryNumber, numberOfLinesOfHistory, prompt);
+
+  char ch; // User entered character 
+  setupRawMode(); 
+
   printf("%s", prompt); // Print prompt first before characters 
   fflush(stdout); // Flush output buffer 
   

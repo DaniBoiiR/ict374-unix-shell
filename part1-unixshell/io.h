@@ -13,9 +13,8 @@ typedef struct {
   int cursor; // Position of the cursor in the line.
   int size; // Command line size 
 
-  FILE *historyfile; // File containing command history. 
-  int lineOfHistoryNumber; // Current index of history in history file 
-  int historyCount; // Total number of history file lines   
+  int historyCount; // Current index of history in history file 
+  int historyTotal; // Total number of history file lines   
   
   char *prompt; // Line prompt 
 
