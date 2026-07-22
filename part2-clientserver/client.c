@@ -15,6 +15,8 @@
 #include <string.h>
 #include <stdio.h>
 #include "stream.h" // MAX_BLOCK_SIZE, readn(), writen()
+#include "client_io.h" // For Raw mode input handling and arrow key usage 
+#include "history.h" // For history handling through arrow keys, !!, !, and history command 
 
 #define SERV_TCP_PORT 4005 // server's "well-known" port number
 int authenticate_client(int sd); // Header for authentication function 
@@ -25,6 +27,7 @@ int main(int argc, char *argv[]){
   char host[60]; // Stores server host name 
   struct sockaddr_in serverAddress; // Stores server IP and Port  
   struct hostent *hp; // Stored data from gethostbyname()
+  FILE *historyfile = initializeHistory();
   
   // Get server host name 
   if(argc == 1){ 
@@ -60,33 +63,42 @@ int main(int argc, char *argv[]){
   printf("Login Successful!\n");
 
   // Main loop if connected successfully 
-  while(++i){ 
-    printf("Client Input [%d]: ", i); 
+  // TODO: Make the input stream and output streak child processes, make parent program send full commands 
+  while(1){ 
+    char line[MAX_BLOCK_SIZE]; 
+    // TODO: CHANGE TO MAX COMMAND SIZE 
+    int lineLength = readLine(line, MAX_BLOCK_SIZE, "% ", historyfile);
+    if(lineLength <= 0) continue; 
+
+    saveHistory(line, historyfile); // Save Local history 
     
     // Get user input and add null terminator 
-    fgets(buf, sizeof(buf), stdin); nr = strlen(buf); 
-    if(buf[nr-1] == '\n') buf[nr-1] = '\0'; --nr; 
+    // if(buf[nr-1] == '\n') buf[nr-1] = '\0'; --nr; 
 
     // Send message if string is not empty 
-    if(nr > 0){
-      // Checks if the message sent has the same number of bytes as current message 
-      if((nw = writen(sd, buf, nr)) < nr){
-        printf("client: send error\n"); exit(1);
-      }
+    if(lineLength > 0){
+      // Sends command to server and reads response 
+      nw = writen(sd, line, lineLength); // Send actual command 
+      char newline = '\n'; 
+      writen(sd, &newline, 1);
 
-      if((nr = readn(sd, buf, sizeof(buf))) <= 0){
-        printf("client: recvieve error\n"); exit(1); 
+      while(nr = readn(sd, buf, sizeof(buf)) > 0){
+        buf[nr] = '\0';
+        printf("%s". buf);
+
+        if(strcmp(buf,))
       }
- 
+  
+      // TODO: Change this to a proper disconnect code ( -1);
       buf[nr] = '\0';
       if(strcmp(buf, "Good-bye!") == 0){
-        printf("%s\n", buf); 
+        printf("Disconnected from Server\n", buf); 
         close(sd);
         exit(0);
       }
 
       // Display message from server 
-      printf("Server Output[%d]: %s\n", i, buf);
+      printf("%s", buf);
     }
   }
 }

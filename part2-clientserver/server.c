@@ -120,31 +120,19 @@ void serve_a_client(int sd){
     close(sd);
     return; 
   }
+  
+  // Initialize File descriptors to socket 
+  // Changes input from keyboard to socket 
+  dup2(sd, STDIN_FILENO);
+  dup2(sd, STDOUT_FILENO);
+  dup2(sd, STDERR_FILENO);
 
-  //execv("./shell", "./shell");
-  while(1){
-    // Read message sent from client socket descriptor and loads it into buffer. 
-    if((nr = readn(sd, buf, sizeof(buf))) <= 0){
-      return; // 0 and lesser return means connection broken down. Must exit
-    }
-
-    // Process the message
-    buf[nr] = '\0'; // Change end of string to null terminator 
-    
-    if(strcmp(buf, "quit") == 0){
-      nw = writen(sd, "Good-bye!", strlen("Good-bye!"));
-      close(sd);
-      return;
-    }
-
-    // Echo the message using strcpy and strcat; 
-    char msg[MAX_BLOCK_SIZE];
-    strcpy(msg, "You said ");
-    strcat(msg, buf);
-
-    //Send processed message to the client 
-    nw = writen(sd, msg, strlen(msg));
-  }
+  // Run shell executable for each child. 
+  // Execl is used when a full path and name of the executable is known and fixed 
+  execl("./shell", "shell", (char *)NULL); 
+  perror("execl"); 
+  exit(1);
+  
 }
 
 /**
