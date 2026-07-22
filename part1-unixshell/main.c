@@ -63,6 +63,9 @@ int main(int argc, char *argv[]){
             }
           }
         } else {
+          printf("%s", prompt); 
+          fflush(stdout); 
+
           if(fgets(inputLine, COMMAND_LINE_SIZE, stdin) == NULL) {
             fclose(historyfile);
             break; 
