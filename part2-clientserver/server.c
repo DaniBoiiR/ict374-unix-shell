@@ -101,9 +101,7 @@ int authenticate_client(int sd){
 
 // Echoes client message appending with "You Said ___". Exits when quit is received. 
 // Sd = Socket Descriptor of the current client. One client per child process 
-void serve_a_client(int sd){
-  int nr, nw; // Read and Write return signals 
-  char buf[MAX_BLOCK_SIZE]; // buffer is the size of the max data block size 
+void serve_a_client(int sd, char *workingDir){
 
   // Authenticate Client 
   if(authenticate_client(sd) == 0){
@@ -111,29 +109,68 @@ void serve_a_client(int sd){
     return; 
   }
 
-  while(1){
-    // Read message sent from client socket descriptor and loads it into buffer. 
-    if((nr = readn(sd, buf, sizeof(buf))) <= 0){
-      return; // 0 and lesser return means connection broken down. Must exit
-    }
+  // Initialize pipes used for the input and output constant streams
+  // These pipes will be running concurrently and are handled by seperate child processes 
+  int stdinPipe[2];
+  int stdoutPipe[2];
+  pipe(stdinPipe);
+  pipe(stdoutPipe); 
+  pid_t pid = fork(); // Create child process to shell output 
 
-    // Process the message
-    buf[nr] = '\0'; // Change end of string to null terminator 
+  // Child process is replaced by the shell 
+  if(pid == 0){
+    close(stdinPipe[1]); // Close write end of the input pipe 
+    close(stdoutPipe[0]); // Close read end of the output pipe 
     
-    if(strcmp(buf, "quit") == 0){
-      nw = writen(sd, "Good-bye!", strlen("Good-bye!"));
-      close(sd);
-      return;
+    // Replace stdin, stdout, and stderr to the corrensponding pipes 
+    dup2(stdinPipe[0], STDIN_FILENO); // Input is read from the read end of input pipe, Client writes in write end 
+    dup2(stdoutPipe[1], STDOUT_FILENO); // Output is written to the write end of output pipe, client reads from the read end. 
+    dup2(stdoutPipe[1], STDERR_FILENO); // Error sent in the output pipe 
+    
+    close(stdinPipe[0]); // Close original pipes, only duplicates will be used  
+    close(stdoutPipe[1]);
+
+    chdir(workingDir); // Change working directory to current working directory 
+    execl("./shell", "shell", NULL); // Child is replaced by shell 
+    perror("shell");
+    exit(1); 
+  } 
+
+  // Parent Process handles input and output redirection to the client. 
+  close(stdinPipe[0]); 
+  close(stdoutPipe[1]); 
+  pid_t sendToClient = fork(); // Child process for relaying data to/from the client 
+  
+  // In child process, recieve shell output and send to the client 
+  if(sendToClient == 0){ 
+    char buf[MAX_BLOCK_SIZE];
+    int n; 
+
+    // Read the data from the output pipe and store inside of buffer 
+    while((n = read(stdoutPipe[0], buf, sizeof(buf))) > 0){
+      writen(sd, buf, n); // Send the data to the client socket 
     }
 
-    // Echo the message using strcpy and strcat; 
-    char msg[MAX_BLOCK_SIZE];
-    strcpy(msg, "You said ");
-    strcat(msg, buf);
-
-    //Send processed message to the client 
-    nw = writen(sd, msg, strlen(msg));
+    close(stdoutPipe[0]);
+    exit(0); 
   }
+
+  // In parent, recieve client input and send to the shell 
+  else {
+    char buf[MAX_BLOCK_SIZE];
+    int n; 
+
+    while((n = read(sd, buf, sizeof(buf))) > 0){
+      write(stdinPipe[1], buf, n); // write() not writen() because constant stream is needed. 
+    }
+
+    close(stdinPipe[1]); 
+  }
+
+  // Clean up zombie processes from shell and input/output child processes
+  close(sd); 
+  waitpid(pid, NULL, 0); 
+  waitpid(sendToClient, NULL, 0); 
 }
 
 /**
@@ -149,6 +186,9 @@ int main(){
   int sd, nsd, n, cliAddressLen; // Server Socket descriptor, Network socket discovery to find client socket and Client Address length 
   pid_t pid; 
   struct sockaddr_in serverAddress, cliAddress;  
+  char workingDir[1024]; // Working directory of the program. Used as reference to get shell path 
+  getcwd(workingDir, sizeof(workingDir)); 
+
 
   // Create daemon process 
   daemon_init();
@@ -196,7 +236,7 @@ int main(){
 
     // In child, serve the current client 
     close(sd);
-    serve_a_client(nsd);
+    serve_a_client(nsd, workingDir);
     close(nsd);
     exit(0);
   }

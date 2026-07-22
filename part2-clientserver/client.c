@@ -14,9 +14,12 @@
 #include <unistd.h> // gethostname 
 #include <string.h>
 #include <stdio.h>
+#include <signal.h>
 #include "stream.h" // MAX_BLOCK_SIZE, readn(), writen()
 
 #define SERV_TCP_PORT 4005 // server's "well-known" port number
+void sendInput(int sd);
+void receiveOutput(int sd); 
 int authenticate_client(int sd); // Header for authentication function 
 
 int main(int argc, char *argv[]){
@@ -60,35 +63,41 @@ int main(int argc, char *argv[]){
   printf("Login Successful!\n");
 
   // Main loop if connected successfully 
-  while(++i){ 
-    printf("Client Input [%d]: ", i); 
-    
-    // Get user input and add null terminator 
-    fgets(buf, sizeof(buf), stdin); nr = strlen(buf); 
-    if(buf[nr-1] == '\n') buf[nr-1] = '\0'; --nr; 
+  pid_t pid = fork(); // Create child processes for receiving terminal output  
+  
+  // Child receives output from the the server terminal  
+  if(pid == 0){ 
+    receiveOutput(sd); 
+  } 
 
-    // Send message if string is not empty 
-    if(nr > 0){
-      // Checks if the message sent has the same number of bytes as current message 
-      if((nw = writen(sd, buf, nr)) < nr){
-        printf("client: send error\n"); exit(1);
-      }
-
-      if((nr = readn(sd, buf, sizeof(buf))) <= 0){
-        printf("client: recvieve error\n"); exit(1); 
-      }
- 
-      buf[nr] = '\0';
-      if(strcmp(buf, "Good-bye!") == 0){
-        printf("%s\n", buf); 
-        close(sd);
-        exit(0);
-      }
-
-      // Display message from server 
-      printf("Server Output[%d]: %s\n", i, buf);
-    }
+  // Parent sends input to the terminal 
+  else{ 
+    sendInput(sd);
+    kill(pid, SIGTERM); 
   }
+}
+
+void sendInput(int sd){
+  char buf[MAX_BLOCK_SIZE]; 
+  int n; 
+
+  // constant stream of character inputs from keyboard sent to the server 
+  while((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0){
+    if(writen(sd, buf, n) != n) break; // Send to the server
+  }
+}
+
+void receiveOutput(int sd){
+  char buf[MAX_BLOCK_SIZE];
+  int n; 
+
+  // Reads constant stream of data from the server 
+  // read() used over readn() because characters are sent as a continous stream 
+  while((n = read(sd, buf, sizeof(buf))) > 0){
+    write(STDOUT_FILENO, buf, n); // Prints to terminal 
+  }
+
+  return; 
 }
 
 int authenticate_client(int sd){
