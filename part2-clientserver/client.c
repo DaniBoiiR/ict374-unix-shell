@@ -75,7 +75,7 @@ int main(int argc, char *argv[]){
     // Get user input and add null terminator 
     // if(buf[nr-1] == '\n') buf[nr-1] = '\0'; --nr; 
 
-    // Send message if string is not empty 
+    /*Send message if string is not empty 
     if(lineLength > 0){
       // Sends command to server and reads response 
       nw = writen(sd, line, lineLength); // Send actual command 
@@ -100,6 +100,7 @@ int main(int argc, char *argv[]){
       // Display message from server 
       printf("%s", buf);
     }
+    */
   }
 }
 
