@@ -21,9 +21,17 @@
 
 #define SERVER_TCP_PORT 4005 // Server port number where the server listens to incoming client connections
 
-// Hard coded valid username and passwords for authentication 
-#define VALID_USERNAME "danielle"
-#define VALID_PASSWORD "hello123"
+struct account {
+    char* username;
+    char* password;
+};
+
+typedef struct account Account;
+
+void initialize_account(Account* account, char* username, char* password) {
+  account->username = username;
+  account->password = password;
+}
 
 // Claims zombie child processes when child process is finished executing 
 void claim_children(int sig){
@@ -67,6 +75,8 @@ int authenticate_client(int sd){
   char buf[MAX_BLOCK_SIZE];
   char username[MAX_BLOCK_SIZE]; 
   char password[MAX_BLOCK_SIZE]; 
+  Account user;
+  initialize_account(&user, "danielle", "hello123");
 
   // Get and Store Username details 
   nw = writen(sd, "Username: ", strlen("Username: "));
@@ -88,7 +98,7 @@ int authenticate_client(int sd){
 
   // Authenticate Username and Password 
   // 0 = Fail | 1 = Success 
-  if(strcmp(username, VALID_USERNAME) != 0 || strcmp(password, VALID_PASSWORD) != 0){ 
+  if(strcmp(username, user.username) != 0 || strcmp(password, user.password) != 0){ 
     nw = writen(sd, "0", 1);
     return 0; 
   }
