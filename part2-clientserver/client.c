@@ -16,8 +16,6 @@
 #include <stdio.h>
 #include <signal.h>
 #include "stream.h" // MAX_BLOCK_SIZE, readn(), writen()
-#include "client_io.h" // For Raw mode input handling and arrow key usage 
-#include "history.h" // For history handling through arrow keys, !!, !, and history command 
 
 #define SERV_TCP_PORT 4005 // server's "well-known" port number
 void sendInput(int sd);

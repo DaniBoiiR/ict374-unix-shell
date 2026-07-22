@@ -2,25 +2,12 @@
 
 // Executes external Non-Built in Unix commands usign execp 
 void executeCommand(Command *command){
-  // Input redirection and output redirection 
-  if (command->stdin_file != NULL) {
-    redirectstdin(command->stdin_file);
-  }
-
-  if (command->stdout_file != NULL) {
-    redirectstdout(command->stdout_file, command->stdout_mode);
-  }
-
-  if (command->stderr_file != NULL) {
-    redirectstderr(command->stderr_file, command->stderr_mode);
-  }
-
   int pid = fork(); // All external commands will be handled by child processes 
   
   if(pid == 0){ // In Child 
     runProgram(command);
   }
-
+  
   if(pid < 0){ // Fork failure 
     perror("fork");
     return;
@@ -53,7 +40,7 @@ void runProgram(Command *command){
   if (command->stderr_file != NULL) {
     redirectstderr(command->stderr_file, command->stderr_mode);
   }
-
+  
   execvp(command->argv[0], command->argv); // Run command in child process 
   perror("execv failed");
   exit(1); 

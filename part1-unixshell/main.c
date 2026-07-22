@@ -17,7 +17,9 @@
 void printCommand(Command* command, char** expandedTokens, int n);
 
 int main(int argc, char *argv[]){
-  // Initialize Variables
+  // Initialize Variable
+  setbuf(stdout, NULL);
+  setbuf(stderr, NULL); 
   char inputLine[COMMAND_LINE_SIZE];
   char *token[MAX_NUM_TOKENS]; // Inital tokenized lines 
   char expandedStorage[MAX_NUM_TOKENS][COMMAND_LINE_SIZE];

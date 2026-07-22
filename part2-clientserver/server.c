@@ -130,7 +130,8 @@ void serve_a_client(int sd, char *workingDir){
   // Child process is replaced by the shell 
   if(pid == 0){
     close(stdinPipe[1]); // Close write end of the input pipe 
-    close(stdoutPipe[0]); // Close read end of the output pipe 
+    close(stdoutPipe[0]); // Close read end of the output pipe
+    close(sd); 
     
     // Replace stdin, stdout, and stderr to the corrensponding pipes 
     dup2(stdinPipe[0], STDIN_FILENO); // Input is read from the read end of input pipe, Client writes in write end 
@@ -140,7 +141,9 @@ void serve_a_client(int sd, char *workingDir){
     close(stdinPipe[0]); // Close original pipes, only duplicates will be used  
     close(stdoutPipe[1]);
 
-    chdir(workingDir); // Change working directory to current working directory 
+    chdir(workingDir); // Change working directory to current working directory
+    setenv("PATH", "/usr/bin:/bin", 1); 
+    write(STDOUT_FILENO, "BEFORE EXEC\n", 12);
     execl("./shell", "shell", NULL); // Child is replaced by shell 
     perror("shell");
     exit(1); 
@@ -154,14 +157,24 @@ void serve_a_client(int sd, char *workingDir){
   // In child process, recieve shell output and send to the client 
   if(sendToClient == 0){ 
     char buf[MAX_BLOCK_SIZE];
-    int n; 
+    int n;
+
+    close(stdinPipe[0]);
+    close(stdinPipe[1]); 
+    close(stdoutPipe[1]); 
 
     // Read the data from the output pipe and store inside of buffer 
     while((n = read(stdoutPipe[0], buf, sizeof(buf))) > 0){
-      writen(sd, buf, n); // Send the data to the client socket 
+      //printf("SERVER GOT %d BYTES: ", n);
+      if(write(sd, buf, n) != n){
+        break; 
+      }
     }
 
     close(stdoutPipe[0]);
+    close(stdoutPipe[0]);
+    close(stdoutPipe[1]);
+    shutdown(sd, SHUT_WR);
     exit(0); 
   }
 
@@ -170,11 +183,17 @@ void serve_a_client(int sd, char *workingDir){
     char buf[MAX_BLOCK_SIZE];
     int n; 
 
-    while((n = read(sd, buf, sizeof(buf))) > 0){
-      write(stdinPipe[1], buf, n); // write() not writen() because constant stream is needed. 
-    }
+    while(1){
+      // readn() MUST match with the writen() used by the client 
+      // otherwise buffer will be filled with garbage data 
+      // Required for the protocol to work 
+      int n = readn(sd, buf, sizeof(buf));
 
-    close(stdinPipe[1]); 
+      if (n <= 0)
+          break;
+
+      write(stdinPipe[1], buf, n);
+    }
   }
 
   // Clean up zombie processes from shell and input/output child processes
@@ -185,12 +204,6 @@ void serve_a_client(int sd, char *workingDir){
 
 /**
 * Main server loop 
-* Optional Improvements 
-* - Add status code at each message sent from the server so the client wont need to parse hardcoded strings 
-* - 0 = Login failed | 1 = Login Successful | 2 = Normal Message | 3 = Exit program 
-* - Use strncpy for copying string to avoid overflow 
-* - Use snprintf for echoing user messages to avoid overflow 
-* - 
 */ 
 int main(){ 
   int sd, nsd, n, cliAddressLen; // Server Socket descriptor, Network socket discovery to find client socket and Client Address length 
