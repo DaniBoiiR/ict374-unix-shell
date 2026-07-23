@@ -158,6 +158,13 @@ int executeBuiltIn(Command *command, char prompt[], FILE *historyfile, char *inp
   } 
 
   if (strcmp(cmd, "prompt") == 0) {
+    
+    // Blocks input redirection if no input or output file is given 
+    // Blocks < and > from becoming prompts
+    if(command->stdin_file != NULL || command->stdout_file != NULL){
+      return 1;
+    }
+
     change_prompt(prompt, command->argv, command->last);
     return 1; 
   }

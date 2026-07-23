@@ -32,7 +32,13 @@ void walk(const char * path) {
 }
 
 void change_prompt(char* prompt, char** argv, int last) {
-  char newPromptBuffer[256];
+  char newPromptBuffer[256] = "";
+
+  // Blocks empty prompt 
+  if(last < 1){
+    return;
+  }
+
   for (int i = 1; i <= last; i++) {
     strcat(newPromptBuffer, argv[i]);
     strcat(newPromptBuffer, " ");
