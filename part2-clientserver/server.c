@@ -70,7 +70,7 @@ void daemon_init(void){
 }
 
 // Authenticate the clients username and password before giving access to the program 
-int authenticate_client(int sd){
+int authenticate_client(int sd, int numAccounts, Account accounts[]){
   int nr, nw;
   char buf[MAX_BLOCK_SIZE];
   char username[MAX_BLOCK_SIZE]; 
@@ -98,23 +98,36 @@ int authenticate_client(int sd){
 
   // Authenticate Username and Password 
   // 0 = Fail | 1 = Success 
-  if(strcmp(username, user.username) != 0 || strcmp(password, user.password) != 0){ 
-    nw = writen(sd, "0", 1);
-    return 0; 
+  for (int i = 0; i < numAccounts; i++) {
+    // Scan the array of structs to see if the entered username and password pair match any
+    if(strcmp(username, accounts[i].username) == 0){ 
+      if (strcmp(password, accounts[i].password) == 0) {
+        nw = writen(sd, "1", 1);
+        return 1; 
+      }
+    }
   }
-
+    /*if(strcmp(username, user.username) != 0 || strcmp(password, user.password) != 0){ 
+      nw = writen(sd, "0", 1);
+      return 0; 
+    }*/
+  /*
   // Success Code  
   writen(sd, "1", 1);
   return 1; 
-  
+  */
+
+  // Failure Code
+  nw = writen(sd, "0", 1);
+  return 0; 
 }
 
 // Echoes client message appending with "You Said ___". Exits when quit is received. 
 // Sd = Socket Descriptor of the current client. One client per child process 
-void serve_a_client(int sd, char *workingDir){
+void serve_a_client(int sd, char *workingDir, int numAccounts, Account accounts[]){
 
   // Authenticate Client 
-  if(authenticate_client(sd) == 0){
+  if(authenticate_client(sd, numAccounts, accounts) == 0){
     close(sd);
     return; 
   }
@@ -212,6 +225,12 @@ int main(){
   char workingDir[1024]; // Working directory of the program. Used as reference to get shell path 
   getcwd(workingDir, sizeof(workingDir)); 
 
+  // Accounts
+  int numAccounts = 10;
+  Account accounts[numAccounts];
+  initialize_account(&accounts[0], "test", "test");
+  initialize_account(&accounts[1], "test2", "test2");
+
 
   // Create daemon process 
   daemon_init();
@@ -259,7 +278,7 @@ int main(){
 
     // In child, serve the current client 
     close(sd);
-    serve_a_client(nsd, workingDir);
+    serve_a_client(nsd, workingDir, numAccounts, accounts);
     close(nsd);
     exit(0);
   }
